@@ -1,0 +1,34 @@
+# Garden Configuration File
+# Format: [PlantType] followed by configuration parameters
+
+[Rose]
+waterRequirement=10
+optimalTempMin=65
+optimalTempMax=75
+minTempTolerance=40
+maxTempTolerance=95
+parasites=aphids,spider_mites
+
+[Tomato]
+waterRequirement=15
+optimalTempMin=70
+optimalTempMax=85
+minTempTolerance=50
+maxTempTolerance=100
+parasites=hornworms,spider_mites,whiteflies
+
+[Lettuce]
+waterRequirement=8
+optimalTempMin=55
+optimalTempMax=70
+minTempTolerance=35
+maxTempTolerance=80
+parasites=aphids,slugs
+
+[Sunflower]
+waterRequirement=12
+optimalTempMin=70
+optimalTempMax=85
+minTempTolerance=45
+maxTempTolerance=100
+parasites=beetles,aphids
