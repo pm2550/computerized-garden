@@ -1,0 +1,58 @@
+# IDE and Editor directories
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+
+# Build output directories
+target/
+bin/
+build/
+out/
+
+# Compiled class files
+*.class
+
+# Log files
+*.log
+log.txt
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Gradle
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+
+# OS specific files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Java specific
+hs_err_pid*
+replay_pid*
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
