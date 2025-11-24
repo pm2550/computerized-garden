@@ -264,6 +264,7 @@ public class Garden {
         List<Double> plantHealth = new ArrayList<>();
         List<Boolean> plantAlive = new ArrayList<>();
         List<Integer> plantWaterLevels = new ArrayList<>();
+        List<Integer> plantWaterRequirements = new ArrayList<>();
         List<Integer> plantAges = new ArrayList<>();
         List<Boolean> plantInfested = new ArrayList<>();
         List<String> plantStatus = new ArrayList<>();
@@ -274,6 +275,7 @@ public class Garden {
             plantHealth.add(plant.getHealth());
             plantAlive.add(plant.isAlive());
             plantWaterLevels.add(plant.getCurrentWater());
+            plantWaterRequirements.add(plant.getWaterRequirement());
             plantAges.add(plant.getAge());
             plantInfested.add(plant.isInfested());
             plantStatus.add(String.format("%s: Health=%.1f%%, Water=%d, Age=%d, %s",
@@ -286,6 +288,7 @@ public class Garden {
         state.put("plantHealth", plantHealth);
         state.put("plantAlive", plantAlive);
         state.put("plantWater", plantWaterLevels);
+        state.put("plantWaterRequirement", plantWaterRequirements);
         state.put("plantAge", plantAges);
         state.put("plantInfested", plantInfested);
         state.put("plantDetails", plantStatus);

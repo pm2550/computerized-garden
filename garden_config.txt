@@ -1,5 +1,8 @@
 # Garden Configuration File
 # Format: [PlantType] followed by configuration parameters
+# 
+# IMPORTANT: Keep total plants under 40 for optimal fixed-size display
+# Current total: Rose(3) + Tomato(4) + Lettuce(3) + Sunflower(2) + Carrot(3) + Pepper(3) = 18 plants
 
 [Rose]
 instances=3
@@ -11,7 +14,7 @@ maxTempTolerance=95
 parasites=aphids,spider_mites
 
 [Tomato]
-instances=3
+instances=4
 waterRequirement=15
 optimalTempMin=70
 optimalTempMax=85
@@ -20,7 +23,7 @@ maxTempTolerance=100
 parasites=hornworms,spider_mites,whiteflies
 
 [Lettuce]
-instances=2
+instances=3
 waterRequirement=8
 optimalTempMin=55
 optimalTempMax=70
@@ -36,3 +39,21 @@ optimalTempMax=85
 minTempTolerance=45
 maxTempTolerance=100
 parasites=beetles,aphids
+
+[Carrot]
+instances=3
+waterRequirement=9
+optimalTempMin=60
+optimalTempMax=75
+minTempTolerance=45
+maxTempTolerance=85
+parasites=carrot_flies,aphids
+
+[Pepper]
+instances=3
+waterRequirement=13
+optimalTempMin=70
+optimalTempMax=85
+minTempTolerance=55
+maxTempTolerance=95
+parasites=aphids,spider_mites,whiteflies

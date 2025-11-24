@@ -20,24 +20,35 @@
       </VBox>
    </top>
    <center>
-      <SplitPane dividerPositions="0.55">
+      <SplitPane dividerPositions="0.65" orientation="HORIZONTAL">
+         <!-- Garden Map View (Main) -->
          <VBox spacing="6">
             <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
-            <Label text="Plant Monitor" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
-            <TableView fx:id="plantTable" prefHeight="400">
+            <Label text="Garden Map (Live)" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+            <!-- Fixed size container with garden background image -->
+            <StackPane fx:id="gardenBackground" style="-fx-border-color: #4caf50; -fx-border-width: 2; -fx-background-color: #e8f5e9;" VBox.vgrow="ALWAYS">
+               <GridPane fx:id="gardenGrid" hgap="8" vgap="8" alignment="CENTER" style="-fx-padding: 15;"/>
+            </StackPane>
+         </VBox>
+         
+         <!-- Right Panel: Plant Details Table + Log -->
+         <VBox spacing="6">
+            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+            
+            <!-- Plant Details Table -->
+            <Label text="Plant Details" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <TableView fx:id="plantTable" prefHeight="250" VBox.vgrow="SOMETIMES">
                <columns>
-                  <TableColumn fx:id="nameColumn" text="Plant" prefWidth="150"/>
-                  <TableColumn fx:id="typeColumn" text="Type" prefWidth="120"/>
-                  <TableColumn fx:id="healthColumn" text="Health" prefWidth="120"/>
-                  <TableColumn fx:id="waterColumn" text="Water" prefWidth="100"/>
-                  <TableColumn fx:id="statusColumn" text="Status" prefWidth="120"/>
+                  <TableColumn fx:id="nameColumn" text="Plant" prefWidth="100"/>
+                  <TableColumn fx:id="typeColumn" text="Type" prefWidth="80"/>
+                  <TableColumn fx:id="healthColumn" text="Health%" prefWidth="70"/>
+                  <TableColumn fx:id="statusColumn" text="Status" prefWidth="80"/>
                </columns>
             </TableView>
-         </VBox>
-         <VBox spacing="6">
-            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
-            <Label text="Live Event Log" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
-            <TextArea fx:id="logArea" prefHeight="400" promptText="Events will appear here..."/>
+            
+            <!-- Event Log -->
+            <Label text="Event Log" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <TextArea fx:id="logArea" VBox.vgrow="ALWAYS" promptText="Events will appear here..."/>
          </VBox>
       </SplitPane>
    </center>

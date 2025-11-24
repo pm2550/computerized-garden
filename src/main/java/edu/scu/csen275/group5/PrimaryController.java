@@ -1,6 +1,7 @@
 package edu.scu.csen275.group5;
 
 import edu.scu.csen275.group5.control.GardenSimulationAPI;
+import edu.scu.csen275.group5.ui.PlantVisualizer;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -15,6 +16,8 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.StackPane;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -34,6 +37,12 @@ public class PrimaryController {
 
     @FXML
     private Label rainGuidanceLabel;
+    
+    @FXML
+    private GridPane gardenGrid;  // the garden map view
+    
+    @FXML
+    private StackPane gardenBackground;  // container for background image
 
     @FXML
     private TableView<PlantStatusRow> plantTable;
@@ -46,9 +55,6 @@ public class PrimaryController {
 
     @FXML
     private TableColumn<PlantStatusRow, String> healthColumn;
-
-    @FXML
-    private TableColumn<PlantStatusRow, String> waterColumn;
 
     @FXML
     private TableColumn<PlantStatusRow, String> statusColumn;
@@ -78,6 +84,30 @@ public class PrimaryController {
         configureLogArea();
         hookObservers();
         hydrateLogTail();
+        setGardenBackground();  // set the background image
+    }
+    
+    // sets the garden background image
+    private void setGardenBackground() {
+        if (gardenBackground != null) {
+            try {
+                String imageUrl = getClass().getResource("garden.png").toExternalForm();
+                String style = String.format(
+                    "-fx-background-image: url('%s'); " +
+                    "-fx-background-size: 100%% auto; " +
+                    "-fx-background-repeat: no-repeat; " +  
+                    "-fx-background-position: center center; " +  
+                    "-fx-border-color: #4caf50; " +
+                    "-fx-border-width: 2;",
+                    imageUrl
+                );
+                gardenBackground.setStyle(style);
+            } catch (Exception e) {
+                System.err.println("Could not load garden.png: " + e.getMessage());
+                // fallback to green background
+                gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
+            }
+        }
     }
 
     @FXML
@@ -155,7 +185,6 @@ public class PrimaryController {
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         typeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
         healthColumn.setCellValueFactory(new PropertyValueFactory<>("health"));
-        waterColumn.setCellValueFactory(new PropertyValueFactory<>("water"));
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
     }
 
@@ -199,10 +228,13 @@ public class PrimaryController {
         @SuppressWarnings("unchecked")
         List<Integer> water = (List<Integer>) state.getOrDefault("plantWater", new ArrayList<>());
         @SuppressWarnings("unchecked")
+        List<Integer> waterReq = (List<Integer>) state.getOrDefault("plantWaterRequirement", new ArrayList<>());
+        @SuppressWarnings("unchecked")
         List<Boolean> alive = (List<Boolean>) state.getOrDefault("plantAlive", new ArrayList<>());
         @SuppressWarnings("unchecked")
         List<Boolean> infested = (List<Boolean>) state.getOrDefault("plantInfested", new ArrayList<>());
 
+        // update table
         plantRows.clear();
         for (int i = 0; i < names.size(); i++) {
             String plantName = names.get(i);
@@ -212,6 +244,40 @@ public class PrimaryController {
             boolean aliveFlag = i < alive.size() && Boolean.TRUE.equals(alive.get(i));
             boolean infestedFlag = i < infested.size() && Boolean.TRUE.equals(infested.get(i));
             plantRows.add(new PlantStatusRow(plantName, type, healthValue, waterValue, aliveFlag, infestedFlag));
+        }
+        
+        // update garden map grid
+        updateGardenMap(names, types, health, water, waterReq, alive);
+    }
+    
+    // rebuild the garden map grid with plant tiles
+    private void updateGardenMap(List<String> names, List<String> types, List<Double> health,
+                                   List<Integer> water, List<Integer> waterReq, List<Boolean> alive) {
+        gardenGrid.getChildren().clear();
+        
+        // limit to reasonable number for fixed view - max 40 plants recommended
+        int maxPlants = Math.min(names.size(), 40);
+        int plantsPerRow = 6;  // 6 columns for better fit in fixed container
+        
+        for (int i = 0; i < maxPlants; i++) {
+            String name = names.get(i);
+            String type = safeGet(types, i);
+            double healthValue = i < health.size() ? health.get(i) : 0.0;
+            int waterValue = i < water.size() ? water.get(i) : 0;
+            int waterReqValue = i < waterReq.size() ? waterReq.get(i) : 10;
+            boolean aliveFlag = i < alive.size() && Boolean.TRUE.equals(alive.get(i));
+            
+            StackPane tile = PlantVisualizer.createPlantTile(name, type, healthValue, 
+                                                               waterValue, waterReqValue, aliveFlag);
+            
+            int row = i / plantsPerRow;
+            int col = i % plantsPerRow;
+            gardenGrid.add(tile, col, row);
+        }
+        
+        // warn if too many plants for optimal display
+        if (names.size() > maxPlants) {
+            System.err.println("WARNING: Garden has " + names.size() + " plants. Only showing first " + maxPlants + " for optimal fixed-size display.");
         }
     }
 
