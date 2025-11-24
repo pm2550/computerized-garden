@@ -260,22 +260,34 @@ public class Garden {
         
         // Plant status
         List<String> plantNames = new ArrayList<>();
+        List<String> plantTypes = new ArrayList<>();
         List<Double> plantHealth = new ArrayList<>();
         List<Boolean> plantAlive = new ArrayList<>();
+        List<Integer> plantWaterLevels = new ArrayList<>();
+        List<Integer> plantAges = new ArrayList<>();
+        List<Boolean> plantInfested = new ArrayList<>();
         List<String> plantStatus = new ArrayList<>();
 
         for (Plant plant : plants) {
             plantNames.add(plant.getName());
+            plantTypes.add(plant.getType());
             plantHealth.add(plant.getHealth());
             plantAlive.add(plant.isAlive());
+            plantWaterLevels.add(plant.getCurrentWater());
+            plantAges.add(plant.getAge());
+            plantInfested.add(plant.isInfested());
             plantStatus.add(String.format("%s: Health=%.1f%%, Water=%d, Age=%d, %s",
                     plant.getName(), plant.getHealth(), plant.getCurrentWater(),
                     plant.getAge(), plant.isAlive() ? "ALIVE" : "DEAD"));
         }
 
         state.put("plants", plantNames);
+        state.put("plantTypes", plantTypes);
         state.put("plantHealth", plantHealth);
         state.put("plantAlive", plantAlive);
+        state.put("plantWater", plantWaterLevels);
+        state.put("plantAge", plantAges);
+        state.put("plantInfested", plantInfested);
         state.put("plantDetails", plantStatus);
 
         // Soil status
@@ -288,11 +300,11 @@ public class Garden {
         state.put("soil", soilStatus);
 
         // Statistics
-        long aliveCount = plants.stream().filter(Plant::isAlive).count();
-        long deadCount = plants.size() - aliveCount;
-        state.put("totalPlants", plants.size());
-        state.put("alivePlants", aliveCount);
-        state.put("deadPlants", deadCount);
+    int aliveCount = (int) plants.stream().filter(Plant::isAlive).count();
+    int deadCount = plants.size() - aliveCount;
+    state.put("totalPlants", plants.size());
+    state.put("alivePlants", aliveCount);
+    state.put("deadPlants", deadCount);
 
         return state;
     }

@@ -19,6 +19,7 @@ public class GardenConfig {
     /**
      * Load configuration from a file in the format:
      * [plantType]
+     * instances=3
      * waterRequirement=15
      * optimalTempMin=70
      * optimalTempMax=85
@@ -53,7 +54,14 @@ public class GardenConfig {
                     // Parse values appropriately
                     try {
                         if (key.equals("parasites")) {
-                            currentConfig.put(key, Arrays.asList(value.split(",")));
+                            List<String> parasites = new ArrayList<>();
+                            for (String token : value.split(",")) {
+                                String trimmed = token.trim();
+                                if (!trimmed.isEmpty()) {
+                                    parasites.add(trimmed);
+                                }
+                            }
+                            currentConfig.put(key, parasites);
                         } else {
                             currentConfig.put(key, Integer.parseInt(value));
                         }

@@ -17,8 +17,11 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) throws IOException {
-        scene = new Scene(loadFXML("primary"), 640, 480);
+        scene = new Scene(loadFXML("primary"), 1100, 720);
+        stage.setTitle("Computerized Garden Control Room");
         stage.setScene(scene);
+        stage.setMinWidth(900);
+        stage.setMinHeight(600);
         stage.show();
     }
 

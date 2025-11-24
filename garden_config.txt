@@ -2,6 +2,7 @@
 # Format: [PlantType] followed by configuration parameters
 
 [Rose]
+instances=3
 waterRequirement=10
 optimalTempMin=65
 optimalTempMax=75
@@ -10,6 +11,7 @@ maxTempTolerance=95
 parasites=aphids,spider_mites
 
 [Tomato]
+instances=3
 waterRequirement=15
 optimalTempMin=70
 optimalTempMax=85
@@ -18,6 +20,7 @@ maxTempTolerance=100
 parasites=hornworms,spider_mites,whiteflies
 
 [Lettuce]
+instances=2
 waterRequirement=8
 optimalTempMin=55
 optimalTempMax=70
@@ -26,6 +29,7 @@ maxTempTolerance=80
 parasites=aphids,slugs
 
 [Sunflower]
+instances=2
 waterRequirement=12
 optimalTempMin=70
 optimalTempMax=85
