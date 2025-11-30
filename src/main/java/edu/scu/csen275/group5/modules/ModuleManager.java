@@ -13,35 +13,37 @@ public class ModuleManager {
     private Map<String, GardenModule> modules;
     private Map<String, ControllableModule> controllableModules;
     private Garden garden;
+    private GardenLogger logger;
 
-    private ModuleManager(Garden garden) {
+    private ModuleManager(Garden garden, GardenLogger logger) {
         this.garden = garden;
+        this.logger = logger;
         this.modules = new HashMap<>();
         this.controllableModules = new HashMap<>();
         initializeModules();
     }
 
-    public static synchronized ModuleManager getInstance(Garden garden) {
+    public static synchronized ModuleManager getInstance(Garden garden, GardenLogger logger) {
         if (instance == null) {
-            instance = new ModuleManager(garden);
+            instance = new ModuleManager(garden, logger);
         }
         return instance;
     }
 
     public static ModuleManager getInstance() {
         if (instance == null) {
-            throw new IllegalStateException("ModuleManager not initialized. Call getInstance(Garden) first.");
+            throw new IllegalStateException("ModuleManager not initialized. Call getInstance(Garden, GardenLogger) first.");
         }
         return instance;
     }
 
     private void initializeModules() {
         // Create and register all functional modules
-        registerModule(new IrrigationSystem(garden), "irrigation");
-        registerModule(new HeatingSystem(garden), "heating");
-        registerModule(new PestControlSystem(garden), "pest_control");
+        registerModule(new IrrigationSystem(garden, logger), "irrigation");
+        registerModule(new HeatingSystem(garden, logger), "heating");
+        registerModule(new PestControlSystem(garden, logger), "pest_control");
 
-        GardenLogger.log("MODULE_MANAGER", "All garden modules initialized successfully");
+        logger.log("MODULE_MANAGER", "All garden modules initialized successfully");
     }
 
     private void registerModule(GardenModule module, String name) {

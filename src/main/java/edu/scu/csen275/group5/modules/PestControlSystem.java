@@ -11,25 +11,27 @@ import java.util.*;
 public class PestControlSystem implements GardenModule {
     private boolean active;
     private Garden garden;
+    private GardenLogger logger;
     private String name = "Pest Control System";
     private Map<String, String> pesticideMap;
 
-    public PestControlSystem(Garden garden) {
+    public PestControlSystem(Garden garden, GardenLogger logger) {
         this.active = false;
         this.garden = garden;
+        this.logger = logger;
         initializePesticideMap();
     }
 
     @Override
     public void activate() {
         this.active = true;
-        GardenLogger.log("PEST_CONTROL", "System activated");
+        logger.log("PEST_CONTROL", "System activated");
     }
 
     @Override
     public void deactivate() {
         this.active = false;
-        GardenLogger.log("PEST_CONTROL", "System deactivated");
+        logger.log("PEST_CONTROL", "System deactivated");
     }
 
     @Override
@@ -40,6 +42,14 @@ public class PestControlSystem implements GardenModule {
     @Override
     public String getModuleName() {
         return name;
+    }
+    
+    @Override
+    public void update() {
+        // Update logic for pest control (called each simulation step)
+        if (active) {
+            // Automatic pest detection and treatment can be implemented here if needed
+        }
     }
 
 
@@ -55,12 +65,12 @@ public class PestControlSystem implements GardenModule {
             if (pesticide != null) {
                 // Call the existing methods of the Garden class
                 garden.treatParasite(normalizedParasite);
-                GardenLogger.log("PARASITE", "Treated " + normalizedParasite + " with " + pesticide);
+                logger.log("PARASITE", "Treated " + normalizedParasite + " with " + pesticide);
             } else {
-                GardenLogger.log("PEST_CONTROL", "No suitable pesticide found for: " + normalizedParasite);
+                logger.log("PEST_CONTROL", "No suitable pesticide found for: " + normalizedParasite);
             }
         } else {
-            GardenLogger.log("PEST_CONTROL", "Warning: Treatment attempted but system is inactive");
+            logger.log("PEST_CONTROL", "Warning: Treatment attempted but system is inactive");
         }
     }
 
@@ -72,7 +82,7 @@ public class PestControlSystem implements GardenModule {
         String normalizedParasite = sanitizeParasiteName(parasiteName);
         // Call the existing methods of the Garden class
         garden.triggerParasiteInfestation(normalizedParasite);
-        GardenLogger.log("PARASITE", "Parasite introduced: " + normalizedParasite);
+        logger.log("PARASITE", "Parasite introduced: " + normalizedParasite);
     }
 
     private void initializePesticideMap() {

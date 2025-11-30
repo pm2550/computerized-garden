@@ -12,25 +12,27 @@ public class HeatingSystem implements ControllableModule {
     private int intensity; // 0-100
     private int targetTemperature;
     private Garden garden;
+    private GardenLogger logger;
     private String name = "Heating System";
 
-    public HeatingSystem(Garden garden) {
+    public HeatingSystem(Garden garden, GardenLogger logger) {
         this.active = false;
         this.intensity = 50;
         this.targetTemperature = 70; // Default target temperature
         this.garden = garden;
+        this.logger = logger;
     }
 
     @Override
     public void activate() {
         this.active = true;
-        GardenLogger.log("HEATING", "System activated. Target: " + targetTemperature + "°F, Intensity: " + intensity);
+        logger.log("HEATING", "System activated. Target: " + targetTemperature + "°F, Intensity: " + intensity);
     }
 
     @Override
     public void deactivate() {
         this.active = false;
-        GardenLogger.log("HEATING", "System deactivated");
+        logger.log("HEATING", "System deactivated");
     }
 
     @Override
@@ -46,7 +48,7 @@ public class HeatingSystem implements ControllableModule {
     @Override
     public void setIntensity(int level) {
         this.intensity = Math.max(0, Math.min(100, level));
-        GardenLogger.log("HEATING", "Intensity set to: " + intensity);
+        logger.log("HEATING", "Intensity set to: " + intensity);
     }
 
     @Override
@@ -64,7 +66,7 @@ public class HeatingSystem implements ControllableModule {
                 int heatAmount = calculateHeatAmount(tempDifference);
                 // Call the existing methods of the Garden class
                 garden.applyTemperature(currentTemp + heatAmount);
-                GardenLogger.log("TEMPERATURE", "Heating applied: " + heatAmount + "°F");
+                logger.log("TEMPERATURE", "Heating applied: " + heatAmount + "°F");
             }
         }
     }
@@ -76,9 +78,9 @@ public class HeatingSystem implements ControllableModule {
     public void setTargetTemperature(int temperature) {
         if (temperature >= 40 && temperature <= 120) {
             this.targetTemperature = temperature;
-            GardenLogger.log("HEATING", "Target temperature set to: " + temperature + "°F");
+            logger.log("HEATING", "Target temperature set to: " + temperature + "°F");
         } else {
-            GardenLogger.log("HEATING", "Error: Temperature must be between 40-120°F");
+            logger.log("HEATING", "Error: Temperature must be between 40-120°F");
         }
     }
 
