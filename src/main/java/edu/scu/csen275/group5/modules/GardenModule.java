@@ -11,9 +11,3 @@ public interface GardenModule {
     String getModuleName();
     void update();
 }
-
-
-public interface ControllableModule extends GardenModule {
-    void setIntensity(int level);
-    int getCurrentIntensity();
-}
