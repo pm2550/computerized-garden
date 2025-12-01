@@ -124,7 +124,7 @@ public class GardenSimulationAPI {
             logger.log("RAIN", "Requested " + rainfallAmount + " units. Clamped to " + validated + ".");
         }
         garden.applyRainfall(validated);
-        closeHour("Rainfall " + validated + " units applied");
+        refreshAndBroadcastState();
     }
 
     /**
@@ -133,7 +133,7 @@ public class GardenSimulationAPI {
     public synchronized void temperature(int temperatureFahrenheit) {
         ensureInitialized();
         garden.applyTemperature(temperatureFahrenheit);
-        closeHour("Temperature set to " + temperatureFahrenheit + "°F");
+        refreshAndBroadcastState();
     }
 
     /**
@@ -152,7 +152,33 @@ public class GardenSimulationAPI {
         logAffectedPlants(cleaned);
         
         garden.triggerParasiteInfestation(cleaned);
-        closeHour("Parasite '" + cleaned + "' released");
+        refreshAndBroadcastState();
+    }
+
+    /**
+     * Advances the simulation by one hour automatically (timer driven).
+     */
+    public synchronized void advanceHourAutomatically() {
+        advanceHourWithReason("Timer auto advance");
+    }
+
+    /**
+     * Advances the simulation by one hour due to user input.
+     */
+    public synchronized void advanceHourManually() {
+        advanceHourWithReason("Next hour button");
+    }
+
+    private void advanceHourWithReason(String reason) {
+        ensureInitialized();
+        closeHour(reason);
+    }
+
+    private void refreshAndBroadcastState() {
+        refreshWaterStats();
+        Map<String, Object> snapshot = captureState();
+        logPlantAlerts(snapshot);
+        dispatchState(snapshot);
     }
 
     /**
@@ -229,15 +255,11 @@ public class GardenSimulationAPI {
         }
     }
 
-    // advances day counter and pushes state update to observers
+    // pushes state update to observers
     private void closeHour(String reason) {
-        garden.advanceDay();
         int hour = hoursElapsed.incrementAndGet();
-        logger.log("DAY", reason + ". Hour " + hour + " closed.");
-        refreshWaterStats();
-        Map<String, Object> snapshot = captureState();
-        logPlantAlerts(snapshot);
-        dispatchState(snapshot);
+        logger.log("HOUR", reason + ". Hour " + hour + " closed.");
+        refreshAndBroadcastState();
     }
 
     private void dispatchState(Map<String, Object> snapshot) {

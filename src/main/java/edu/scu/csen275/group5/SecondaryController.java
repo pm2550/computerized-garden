@@ -47,6 +47,10 @@ public class SecondaryController {
                 
                 "📝 Notes:\n" +
                 "  • UI shows recent lines only\n" +
-                "  • Open log.txt for full history\n";
+                "  • Open log.txt for full history\n\n" +
+                "⏱️ Timer Controls:\n" +
+                "  • Auto timer advances hours using real seconds\n" +
+                "  • 'Next Hour' skips immediately when needed\n" +
+                "  • Speed buttons (1x default, 2x–32x boost) or custom entry adjust pace\n";
     }
 }

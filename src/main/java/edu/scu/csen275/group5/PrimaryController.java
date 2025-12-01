@@ -2,12 +2,14 @@ package edu.scu.csen275.group5;
 
 import edu.scu.csen275.group5.control.GardenSimulationAPI;
 import edu.scu.csen275.group5.ui.PlantVisualizer;
+import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
@@ -22,6 +24,7 @@ import javafx.scene.layout.StackPane;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class PrimaryController {
@@ -34,6 +37,9 @@ public class PrimaryController {
 
     @FXML
     private Label clockLabel;
+
+    @FXML
+    private Label timerStatusLabel;
 
     @FXML
     private Label rainGuidanceLabel;
@@ -74,14 +80,32 @@ public class PrimaryController {
     @FXML
     private Button initButton;
 
+    @FXML
+    private Button nextHourButton;
+
+    @FXML
+    private ComboBox<String> speedComboBox;
+
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
     private final GardenSimulationAPI api = new GardenSimulationAPI();
+
+    private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
+    private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
+    private AnimationTimer hourTimer;
+    private double speedMultiplier = 1.0;
+    private double remainingSeconds = BASE_HOUR_SECONDS;
+    private long lastTickNanos = 0L;
+    private boolean timerActive = false;
+    private int lastKnownSimHour = 0;
+    private String lastSpeedSelection = "1x";
+    private boolean suppressSpeedSelectionUpdate = false;
 
     @FXML
     public void initialize() {
         configureTable();
         configureSpinners();
         configureLogArea();
+        configureTimerControls();
         hookObservers();
         hydrateLogTail();
         setGardenBackground();  // set the background image
@@ -118,6 +142,7 @@ public class PrimaryController {
             updateRainGuidance();
             summaryLabel.setText("Garden online — ready for events");
             initButton.setDisable(true);
+            startHourTimer();
         } catch (Exception ex) {
             appendLog("Initialization failed: " + ex.getMessage());
             summaryLabel.setText("Init error: " + ex.getMessage());
@@ -149,6 +174,16 @@ public class PrimaryController {
             parasiteField.clear();
         } catch (Exception ex) {
             appendLog("Parasite event failed: " + ex.getMessage());
+        }
+    }
+
+    @FXML
+    private void handleNextHour() {
+        try {
+            api.advanceHourManually();
+            resetTimerCountdown();
+        } catch (Exception ex) {
+            appendLog("Next hour failed: " + ex.getMessage());
         }
     }
 
@@ -186,6 +221,10 @@ public class PrimaryController {
         typeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
         healthColumn.setCellValueFactory(new PropertyValueFactory<>("health"));
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
+        plantTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        healthColumn.setText("Health %");
+        healthColumn.setMinWidth(80);
+        healthColumn.setPrefWidth(80);
     }
 
     private void configureSpinners() {
@@ -198,6 +237,235 @@ public class PrimaryController {
     private void configureLogArea() {
         logArea.setEditable(false);
         logArea.setWrapText(true);
+    }
+
+    private void configureTimerControls() {
+        if (timerStatusLabel != null) {
+            timerStatusLabel.setText("Timer: waiting for init");
+        }
+        if (nextHourButton != null) {
+            nextHourButton.setDisable(true);
+        }
+        if (speedComboBox != null) {
+            speedComboBox.setEditable(true);
+            speedComboBox.setDisable(true);
+            suppressSpeedSelectionUpdate = true;
+            speedComboBox.getItems().setAll("1x", "2x", "4x", "8x", "16x", "32x");
+            speedComboBox.setValue("1x");
+            suppressSpeedSelectionUpdate = false;
+            speedComboBox.valueProperty().addListener((obs, oldVal, newVal) -> onSpeedSelectionChanged(oldVal, newVal));
+        }
+        speedMultiplier = 1.0;
+        lastSpeedSelection = "1x";
+        updateTimerLabel();
+    }
+
+    private void onSpeedSelectionChanged(String oldValue, String newValue) {
+        if (suppressSpeedSelectionUpdate) {
+            return;
+        }
+        if (newValue == null || newValue.isBlank()) {
+            revertSpeedSelection();
+            return;
+        }
+
+        double parsed;
+        try {
+            parsed = parseSpeedInput(newValue);
+        } catch (NumberFormatException ex) {
+            appendLog("Invalid speed value: " + newValue + ". Keeping " + lastSpeedSelection);
+            revertSpeedSelection();
+            return;
+        }
+
+        if (parsed <= 0) {
+            appendLog("Speed multiplier must be greater than 0");
+            revertSpeedSelection();
+            return;
+        }
+
+        lastSpeedSelection = formatSpeedDisplay(parsed);
+        applySpeedMultiplier(parsed);
+        updateSpeedComboDisplay(lastSpeedSelection);
+    }
+
+    private void revertSpeedSelection() {
+        updateSpeedComboDisplay(lastSpeedSelection);
+    }
+
+    private void updateSpeedComboDisplay(String displayValue) {
+        if (speedComboBox == null) {
+            return;
+        }
+        suppressSpeedSelectionUpdate = true;
+        speedComboBox.setValue(displayValue);
+        suppressSpeedSelectionUpdate = false;
+    }
+
+    private double parseSpeedInput(String rawValue) {
+        String normalized = rawValue.trim().toLowerCase(Locale.ROOT);
+        if (normalized.endsWith("x")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return Double.parseDouble(normalized);
+    }
+
+    private String formatSpeedDisplay(double multiplier) {
+        if (Math.abs(multiplier - Math.rint(multiplier)) < 0.01) {
+            return String.format("%.0fx", Math.rint(multiplier));
+        }
+        return String.format("%.2fx", multiplier);
+    }
+
+    private void setSpeedControlDisabled(boolean disabled) {
+        if (speedComboBox != null) {
+            speedComboBox.setDisable(disabled);
+        }
+    }
+
+    private void applySpeedMultiplier(double multiplier) {
+        if (multiplier <= 0) {
+            appendLog("Speed multiplier must be greater than 0");
+            return;
+        }
+        double previousMultiplier = speedMultiplier;
+        double previousHourDuration = getHourDurationSeconds();
+        speedMultiplier = multiplier;
+        if (timerActive) {
+            double newHourDuration = getHourDurationSeconds();
+            if (previousMultiplier > 0 && previousHourDuration > 0) {
+                double remainingFraction = Math.max(0.0, Math.min(1.0, remainingSeconds / previousHourDuration));
+                remainingSeconds = newHourDuration * remainingFraction;
+            } else {
+                remainingSeconds = newHourDuration;
+            }
+            lastTickNanos = 0L;
+        }
+        updateTimerLabel();
+    }
+
+    private void startHourTimer() {
+        stopHourTimer();
+        timerActive = true;
+        setSpeedControlDisabled(false);
+        if (nextHourButton != null) {
+            nextHourButton.setDisable(false);
+        }
+        lastKnownSimHour = api.getHoursElapsed();
+        resetTimerCountdown();
+        hourTimer = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                handleTimerTick(now);
+            }
+        };
+        hourTimer.start();
+    }
+
+    private void stopHourTimer() {
+        timerActive = false;
+        if (hourTimer != null) {
+            hourTimer.stop();
+            hourTimer = null;
+        }
+        lastTickNanos = 0L;
+        if (nextHourButton != null) {
+            nextHourButton.setDisable(true);
+        }
+        setSpeedControlDisabled(true);
+        updateTimerLabel();
+    }
+
+    private void resetTimerCountdown() {
+        remainingSeconds = getHourDurationSeconds();
+        lastTickNanos = 0L;
+        updateTimerLabel();
+    }
+
+    private void onHourAdvanced() {
+        if (!timerActive) {
+            return;
+        }
+        remainingSeconds = getHourDurationSeconds();
+        updateTimerLabel();
+    }
+
+    private void updateTimerLabel() {
+        if (timerStatusLabel == null) {
+            return;
+        }
+        if (!timerActive) {
+            timerStatusLabel.setText("Timer paused");
+            updateClockDisplay();
+            return;
+        }
+        timerStatusLabel.setText(String.format("Timer running @ %sx", formatSpeedLabel()));
+        updateClockDisplay();
+    }
+
+    private void updateClockDisplay() {
+        updateClockDisplay(lastKnownSimHour);
+    }
+
+    private void updateClockDisplay(int hoursElapsed) {
+        if (clockLabel == null) {
+            return;
+        }
+        double hourDuration = getHourDurationSeconds();
+        double progressFraction = 0.0;
+        if (timerActive && hourDuration > 0) {
+            double elapsedCurrentHour = hourDuration - remainingSeconds;
+            progressFraction = Math.max(0.0, Math.min(1.0, elapsedCurrentHour / hourDuration));
+        }
+        double totalSimSeconds = Math.max(0.0,
+                hoursElapsed * SIM_HOUR_SECONDS + (progressFraction * SIM_HOUR_SECONDS));
+        long totalSecondsFloor = (long) Math.floor(totalSimSeconds);
+        long days = totalSecondsFloor / (24 * 3600);
+        long remainder = totalSecondsFloor % (24 * 3600);
+        long hours = remainder / 3600;
+        remainder %= 3600;
+        long minutes = remainder / 60;
+        long seconds = remainder % 60;
+        clockLabel.setText(String.format("Elapsed  |  %dd %02dh %02dm %02ds", days, hours, minutes, seconds));
+    }
+
+    private String formatSpeedLabel() {
+        if (Math.abs(speedMultiplier - Math.rint(speedMultiplier)) < 0.01) {
+            return String.format("%.0f", speedMultiplier);
+        }
+        return String.format("%.1f", speedMultiplier);
+    }
+
+    private double getHourDurationSeconds() {
+        double effectiveMultiplier = speedMultiplier <= 0 ? 1.0 : speedMultiplier;
+        return BASE_HOUR_SECONDS / effectiveMultiplier;
+    }
+
+    private void handleTimerTick(long now) {
+        if (!timerActive) {
+            return;
+        }
+        if (lastTickNanos == 0L) {
+            lastTickNanos = now;
+            return;
+        }
+
+        double deltaSeconds = (now - lastTickNanos) / 1_000_000_000.0;
+        lastTickNanos = now;
+        remainingSeconds -= deltaSeconds;
+
+        while (timerActive && remainingSeconds <= 0) {
+            remainingSeconds += getHourDurationSeconds();
+            try {
+                api.advanceHourAutomatically();
+            } catch (Exception ex) {
+                appendLog("Auto hour failed: " + ex.getMessage());
+                stopHourTimer();
+                break;
+            }
+        }
+
+        updateTimerLabel();
     }
 
     private void hydrateLogTail() {
@@ -219,11 +487,17 @@ public class PrimaryController {
             return;
         }
 
-        summaryLabel.setText(String.format("%d/%d plants alive",
-                ((Number) state.getOrDefault("alivePlants", 0)).intValue(),
-                ((Number) state.getOrDefault("totalPlants", 0)).intValue()));
-        dayLabel.setText("Day " + ((Number) state.getOrDefault("day", 0)).intValue());
-        clockLabel.setText("Sim hours: " + api.getHoursElapsed());
+    summaryLabel.setText(String.format("%d/%d plants alive",
+        ((Number) state.getOrDefault("alivePlants", 0)).intValue(),
+        ((Number) state.getOrDefault("totalPlants", 0)).intValue()));
+    int hoursElapsed = api.getHoursElapsed();
+    int derivedDay = Math.max(0, hoursElapsed) / 24;
+    dayLabel.setText(String.format("Day %d", derivedDay));
+    if (hoursElapsed != lastKnownSimHour) {
+        lastKnownSimHour = hoursElapsed;
+        onHourAdvanced();
+    }
+    updateClockDisplay(hoursElapsed);
 
         @SuppressWarnings("unchecked")
         List<String> names = (List<String>) state.getOrDefault("plants", new ArrayList<>());

@@ -18,6 +18,7 @@ public class App extends Application {
     @Override
     public void start(Stage stage) throws IOException {
         scene = new Scene(loadFXML("primary"), 1100, 720);
+        scene.getStylesheets().add(App.class.getResource("app.css").toExternalForm());
         stage.setTitle("Computerized Garden Control Room");
         stage.setScene(scene);
         stage.setMinWidth(900);
@@ -35,6 +36,11 @@ public class App extends Application {
     }
 
     public static void main(String[] args) {
+        // Disable LCD subpixel text and force the T2K text renderer to avoid bold clipping
+        System.setProperty("prism.lcdtext", "false");
+        System.setProperty("prism.text", "t2k");
+        // Fall back to software pipeline for more predictable font rasterization on some GPUs
+        System.setProperty("prism.order", "sw");
         launch();
     }
 

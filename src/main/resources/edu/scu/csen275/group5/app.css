@@ -1,0 +1,65 @@
+.root {
+    -fx-font-smoothing-type: gray;
+    -fx-snap-to-pixel: false;
+}
+
+.label {
+    -fx-font-smoothing-type: gray;
+    -fx-snap-to-pixel: false;
+}
+
+.bold-label {
+    font-weight: bold;
+    -fx-font-weight: bold;
+    font-family: "Arial";
+    -fx-font-family: "Arial";
+    font-size: 14px;
+    -fx-font-size: 14px;
+    padding: 1px 14px 1px 4px;
+    -fx-padding: 1 14 1 4;
+    -fx-label-padding: 0 8 0 4;
+    -fx-snap-to-pixel: false;
+    -fx-font-smoothing-type: gray;
+}
+
+.section-title {
+    font-weight: bold;
+    -fx-font-weight: bold;
+    font-family: "Arial";
+    -fx-font-family: "Arial";
+    font-size: 16px;
+    -fx-font-size: 16px;
+    padding: 3px 14px 3px 4px;
+    -fx-padding: 3 14 3 4;
+    -fx-label-padding: 0 8 0 4;
+    -fx-snap-to-pixel: false;
+}
+
+.panel-heading {
+    font-weight: bold;
+    -fx-font-weight: bold;
+    font-family: "Arial";
+    -fx-font-family: "Arial";
+    font-size: 20px;
+    -fx-font-size: 20px;
+    padding: 5px 16px 7px 4px;
+    -fx-padding: 5 16 7 4;
+    -fx-label-padding: 0 10 0 4;
+    -fx-snap-to-pixel: false;
+}
+
+.table-view {
+    -fx-snap-to-pixel: false;
+}
+
+.table-view .column-header,
+.table-view .column-header-background {
+    -fx-snap-to-pixel: false;
+}
+
+.table-view .column-header .label {
+    -fx-font-smoothing-type: gray;
+    -fx-snap-to-pixel: false;
+    -fx-padding: 4 8 4 8;
+    -fx-text-overrun: clip;
+}

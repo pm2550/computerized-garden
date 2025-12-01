@@ -40,11 +40,11 @@ class GardenSimulationAPITest {
     }
 
     @Test
-    void rainEventClampsAndAdvancesClock() {
+    void rainEventClampsWithoutAdvancingClock() {
         api.initializeGarden();
         int before = api.getHoursElapsed();
         api.rain(api.getMaxWaterRequirement() + 50);
-        assertEquals(before + 1, api.getHoursElapsed());
+        assertEquals(before, api.getHoursElapsed());
         boolean clampLogged = api.recentLogEntries().stream()
                 .anyMatch(line -> line.contains("Clamped"));
         assertTrue(clampLogged, "Clamp log entry missing");
