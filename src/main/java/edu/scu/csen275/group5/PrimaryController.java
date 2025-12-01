@@ -222,9 +222,15 @@ public class PrimaryController {
         healthColumn.setCellValueFactory(new PropertyValueFactory<>("health"));
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
         plantTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
-        healthColumn.setText("Health %");
-        healthColumn.setMinWidth(80);
-        healthColumn.setPrefWidth(80);
+        
+        // Use a Label with snapToPixel=false to prevent clipping, matching the FXML fix
+        javafx.scene.control.Label healthHeader = new javafx.scene.control.Label("Health %");
+        healthHeader.setSnapToPixel(false);
+        healthColumn.setGraphic(healthHeader);
+        healthColumn.setText("");
+        
+        healthColumn.setMinWidth(95);
+        healthColumn.setPrefWidth(105);
     }
 
     private void configureSpinners() {
