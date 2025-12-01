@@ -204,7 +204,13 @@ public class PrimaryController {
         List<String> history = api.recentLogEntries();
         if (!history.isEmpty()) {
             logArea.clear();
-            history.forEach(line -> logArea.appendText(line + System.lineSeparator()));
+            history.forEach(line -> {
+                // Add red warning emoji for ALERT lines
+                if (line.contains("[ALERT]")) {
+                    line = "🔴 " + line;
+                }
+                logArea.appendText(line + System.lineSeparator());
+            });
         }
     }
 
@@ -286,6 +292,10 @@ public class PrimaryController {
     }
 
     private void appendLog(String line) {
+        // Add red warning emoji for ALERT lines
+        if (line.contains("[ALERT]")) {
+            line = "🔴 " + line;
+        }
         logArea.appendText(line + System.lineSeparator());
         trimLogArea();
     }

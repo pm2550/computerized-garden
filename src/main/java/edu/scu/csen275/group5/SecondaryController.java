@@ -24,13 +24,29 @@ public class SecondaryController {
 
     private String buildHelpText() {
         return "Computerized Garden Log Guide\n" +
-                "--------------------------------\n" +
-                "• File: log.txt (project root).\n" +
-                "• Every API call writes TIMESTAMP [TAG] MESSAGE.\n" +
-                "• Tags: INIT, PLANT, RAIN, TEMPERATURE, PARASITE, DAY, STATE.\n" +
-                "• Use the control room ‘Snapshot’ button to dump a summarized state entry.\n" +
-                "• Lines flagged ALERT indicate living plants battling parasites.\n" +
-                "• The UI shows the most recent lines; open the file for the full history.\n" +
-                "• Keep log.txt with submissions so the TA can audit your run.";
+                "═════════════════════════════════\n\n" +
+                
+                "📄 Log File: log.txt (project root)\n" +
+                "Format: TIMESTAMP [TAG] MESSAGE\n\n" +
+                
+                "🏷️ Log Tags:\n" +
+                "  [INIT]          Garden initialization\n" +
+                "  [PLANT]         Plant seeding\n" +
+                "  [RAIN]          Rainfall events\n" +
+                "  [TEMPERATURE]   Temperature changes\n" +
+                "  [PARASITE]      Parasite release\n" +
+                "  [DAY]           Day/hour progression\n" +
+                "  [STATE]         Summary (alive/total)\n" +
+                "  [PLANT_STATUS]  Detailed per-plant info\n" +
+                "  [ALERT]         🔴 Plants under attack\n\n" +
+                
+                "📊 Snapshot Button:\n" +
+                "  • Logs summary + each plant's status\n" +
+                "  • Shows: health%, water, alive/dead\n" +
+                "  • Use every 24 sim-hours as required\n\n" +
+                
+                "📝 Notes:\n" +
+                "  • UI shows recent lines only\n" +
+                "  • Open log.txt for full history\n";
     }
 }
