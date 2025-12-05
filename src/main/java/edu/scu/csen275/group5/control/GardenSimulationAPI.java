@@ -16,6 +16,10 @@ import java.util.Random;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -44,6 +48,8 @@ public class GardenSimulationAPI {
     private int maxWaterRequirement;
     private boolean autoEventsEnabled;
     private AutoEventConfig autoEventConfig;
+    private ScheduledExecutorService autoEventExecutor;
+    private final WeatherTelemetry weatherTelemetry;
 
     public GardenSimulationAPI() {
         this(Paths.get("garden_config.txt"), Paths.get("log.txt"));
@@ -58,8 +64,10 @@ public class GardenSimulationAPI {
         this.random = new Random();
         this.minWaterRequirement = 5;   // defaults until we know actual plant needs
         this.maxWaterRequirement = 20;
-    this.autoEventConfig = AutoEventConfig.defaultConfig();
-    this.autoEventsEnabled = true;
+        this.autoEventConfig = AutoEventConfig.defaultConfig();
+        this.autoEventsEnabled = true;
+        this.autoEventExecutor = null;
+    this.weatherTelemetry = new WeatherTelemetry();
 
         // wire up logger so we can push log lines to observers (for UI display)
         this.logger.addListener(this::fanOutLogEntry);
@@ -92,6 +100,9 @@ public class GardenSimulationAPI {
         refreshWaterStats();  // figure out min/max water needs from actual plants
         logger.log("INIT", "Garden initialized with " + garden.getPlants().size() + " plants");
         dispatchState(captureState());
+        if (autoEventsEnabled) {
+            startAutoEventsScheduler();
+        }
     }
 
     /**
@@ -133,6 +144,8 @@ public class GardenSimulationAPI {
             logger.log("RAIN", "Requested " + rainfallAmount + " units. Clamped to " + validated + ".");
         }
         garden.applyRainfall(validated);
+        weatherTelemetry.recordRain(validated);
+        logger.log("RAIN", "Manual rainfall applied: " + validated + " units");
         refreshAndBroadcastState();
     }
 
@@ -142,6 +155,7 @@ public class GardenSimulationAPI {
     public synchronized void temperature(int temperatureFahrenheit) {
         ensureInitialized();
         garden.applyTemperature(temperatureFahrenheit);
+        weatherTelemetry.recordTemperature(temperatureFahrenheit);
         refreshAndBroadcastState();
     }
 
@@ -180,14 +194,16 @@ public class GardenSimulationAPI {
 
     private void advanceHourWithReason(String reason) {
         ensureInitialized();
-        if (autoEventsEnabled) {
-            runAutoEventsForHour();
-        }
         closeHour(reason);
     }
 
     public synchronized void setAutoEventsEnabled(boolean enabled) {
         this.autoEventsEnabled = enabled;
+        if (enabled) {
+            startAutoEventsScheduler();
+        } else {
+            stopAutoEventsScheduler();
+        }
         logger.log("AUTO", enabled ? "Automated weather/events enabled" : "Automated weather/events disabled");
     }
 
@@ -198,6 +214,9 @@ public class GardenSimulationAPI {
     public synchronized void updateAutoEventConfig(AutoEventConfig config) {
         if (config != null) {
             this.autoEventConfig = config;
+            if (autoEventsEnabled) {
+                restartAutoEventsScheduler();
+            }
         }
     }
 
@@ -303,7 +322,12 @@ public class GardenSimulationAPI {
     }
 
     private Map<String, Object> captureState() {
-        return garden.getState();
+        Map<String, Object> snapshot = garden.getState();
+        int hourOfDay = getCurrentHourOfDay();
+        boolean night = isNightHour(hourOfDay);
+        snapshot.put("hoursElapsed", hoursElapsed.get());
+        snapshot.put("weather", weatherTelemetry.snapshot(night, hourOfDay));
+        return snapshot;
     }
 
     // update rainfall range based on actual plants in garden
@@ -325,44 +349,86 @@ public class GardenSimulationAPI {
                 .orElse(20);
     }
 
-    private void runAutoEventsForHour() {
-        if (autoEventConfig == null) {
-            autoEventConfig = AutoEventConfig.defaultConfig();
+    private synchronized void startAutoEventsScheduler() {
+        if (!autoEventsEnabled || !initialized) {
+            return;
         }
+        if (autoEventExecutor != null && !autoEventExecutor.isShutdown()) {
+            return;
+        }
+        long intervalSeconds = Math.max(1L, autoEventConfig.getIntervalSeconds());
+        ThreadFactory factory = runnable -> {
+            Thread t = new Thread(runnable, "garden-auto-events");
+            t.setDaemon(true);
+            return t;
+        };
+        autoEventExecutor = Executors.newSingleThreadScheduledExecutor(factory);
+        autoEventExecutor.scheduleAtFixedRate(() -> {
+            try {
+                runAutoEventsRealtime();
+            } catch (Exception ex) {
+                logger.log("AUTO", "Auto event tick failed: " + ex.getMessage());
+            }
+        }, 0, intervalSeconds, TimeUnit.SECONDS);
+    }
 
-        StringBuilder summary = new StringBuilder();
+    private synchronized void stopAutoEventsScheduler() {
+        if (autoEventExecutor != null) {
+            autoEventExecutor.shutdownNow();
+            autoEventExecutor = null;
+        }
+    }
 
-        if (autoEventConfig.getRainChance() > 0.0) {
-            if (random.nextDouble() < autoEventConfig.getRainChance()) {
+    private synchronized void restartAutoEventsScheduler() {
+        stopAutoEventsScheduler();
+        startAutoEventsScheduler();
+    }
+
+    private void runAutoEventsRealtime() {
+        if (!autoEventsEnabled) {
+            return;
+        }
+        synchronized (this) {
+            if (!initialized) {
+                return;
+            }
+            if (autoEventConfig == null) {
+                autoEventConfig = AutoEventConfig.defaultConfig();
+            }
+
+            StringBuilder summary = new StringBuilder();
+            int hourOfDay = getCurrentHourOfDay();
+            boolean isNight = isNightHour(hourOfDay);
+
+            if (autoEventConfig.getRainChance() > 0.0 && random.nextDouble() < autoEventConfig.getRainChance()) {
                 int rainAmount = generateRandomRainAmount();
                 int applied = applyRainSilently(rainAmount);
                 if (applied > 0) {
                     summary.append(String.format("rain=%du ", applied));
                 }
             }
-        }
 
-        if (autoEventConfig.getTemperatureChance() > 0.0) {
-            if (random.nextDouble() < autoEventConfig.getTemperatureChance()) {
-                int temp = computeDiurnalTemperature();
+            if (autoEventConfig.getTemperatureChance() > 0.0 && random.nextDouble() < autoEventConfig.getTemperatureChance()) {
+                int temp = computeDiurnalTemperatureWithVariation();
                 applyTemperatureSilently(temp);
-                summary.append(String.format("temp=%d°F(time)", temp)).append(' ');
+                summary.append(String.format("temp=%d°F(time) ", temp));
             }
-        }
 
-        if (autoEventConfig.getParasiteChance() > 0.0) {
-            if (random.nextDouble() < autoEventConfig.getParasiteChance()) {
+            if (autoEventConfig.getParasiteChance() > 0.0 && random.nextDouble() < autoEventConfig.getParasiteChance()) {
                 String parasite = pickRandomParasite();
                 if (!parasite.isEmpty()) {
                     applyParasiteSilently(parasite);
                     summary.append(String.format("parasite=%s ", parasite));
                 }
             }
-        }
 
-        if (summary.length() > 0) {
-            refreshWaterStats();
-            logger.log("AUTO", "Automated events -> " + summary.toString().trim());
+            weatherTelemetry.nudgeClouds(random, isNight);
+            if (summary.length() > 0) {
+                refreshAndBroadcastState();
+                logger.log("AUTO", "Automated tick -> " + summary.toString().trim());
+            } else {
+                dispatchState(captureState());
+            }
         }
     }
 
@@ -370,6 +436,15 @@ public class GardenSimulationAPI {
         int min = Math.max(1, minWaterRequirement);
         int max = Math.max(min, maxWaterRequirement);
         return randomBetween(min, max);
+    }
+
+    private int computeDiurnalTemperatureWithVariation() {
+        int base = computeDiurnalTemperature();
+        int jitter = autoEventConfig != null ? autoEventConfig.getTemperatureJitter() : 2;
+        if (jitter > 0) {
+            base += randomBetween(-jitter, jitter);
+        }
+        return Math.max(40, Math.min(120, base));
     }
 
     private int computeDiurnalTemperature() {
@@ -382,16 +457,10 @@ public class GardenSimulationAPI {
             max = swap;
         }
 
-        double progress;
-        if (hourOfDay <= 12) {
-            progress = hourOfDay / 12.0; // sunrise to noon warming
-            progress = Math.min(1.0, Math.max(0.0, progress));
-            return (int) Math.round(min + (max - min) * progress);
-        } else {
-            progress = (hourOfDay - 12) / 12.0; // afternoon cooling
-            progress = Math.min(1.0, Math.max(0.0, progress));
-            return (int) Math.round(max - (max - min) * progress);
-        }
+        double normalizedHour = hourOfDay / 24.0;
+        double sineWave = Math.sin(2 * Math.PI * normalizedHour - Math.PI / 2); // peak at midday
+        double baseNormalized = (sineWave + 1) / 2.0; // map -1..1 to 0..1
+        return (int) Math.round(min + (max - min) * baseNormalized);
     }
 
     private int getCurrentHourOfDay() {
@@ -401,6 +470,10 @@ public class GardenSimulationAPI {
             hour += 24;
         }
         return hour;
+    }
+
+    private boolean isNightHour(int hourOfDay) {
+        return hourOfDay < 6 || hourOfDay >= 20;
     }
 
     private int randomBetween(int min, int max) {
@@ -413,12 +486,15 @@ public class GardenSimulationAPI {
     private int applyRainSilently(int requested) {
         int validated = clampRainfall(requested);
         garden.applyRainfall(validated);
+        weatherTelemetry.recordRain(validated);
+        logger.log("RAIN", "Automated rainfall applied: " + validated + " units");
         return validated;
     }
 
     private void applyTemperatureSilently(int requested) {
         int clamped = Math.max(40, Math.min(120, requested));
         garden.applyTemperature(clamped);
+        weatherTelemetry.recordTemperature(clamped);
     }
 
     private void applyParasiteSilently(String parasiteName) {
@@ -455,18 +531,23 @@ public class GardenSimulationAPI {
         private final double parasiteChance;
         private final int minTemperature;
         private final int maxTemperature;
+        private final int intervalSeconds;
+        private final int temperatureJitter;
 
         private AutoEventConfig(double rainChance, double temperatureChance, double parasiteChance,
-                                int minTemperature, int maxTemperature) {
+                                int minTemperature, int maxTemperature,
+                                int intervalSeconds, int temperatureJitter) {
             this.rainChance = rainChance;
             this.temperatureChance = temperatureChance;
             this.parasiteChance = parasiteChance;
             this.minTemperature = minTemperature;
             this.maxTemperature = maxTemperature;
+            this.intervalSeconds = intervalSeconds;
+            this.temperatureJitter = temperatureJitter;
         }
 
         public static AutoEventConfig defaultConfig() {
-            return new AutoEventConfig(0.65, 1.0, 0.25, 55, 95);
+            return new AutoEventConfig(0.25, 0.9, 0.08, 55, 95, 4, 3);
         }
 
         public double getRainChance() {
@@ -487,6 +568,14 @@ public class GardenSimulationAPI {
 
         public int getMaxTemperature() {
             return maxTemperature;
+        }
+
+        public int getIntervalSeconds() {
+            return intervalSeconds;
+        }
+
+        public int getTemperatureJitter() {
+            return temperatureJitter;
         }
     }
 
@@ -596,6 +685,85 @@ public class GardenSimulationAPI {
             String alertMsg = String.format("ALERT: %s (%s) under attack by %s | Health: %.1f%%",
                 plant.getName(), plant.getType(), parasiteName, plant.getHealth());
             logger.log("ALERT", alertMsg);
+        }
+    }
+
+    private static class WeatherTelemetry {
+        private static final long ACTIVE_RAIN_WINDOW_MS = 60_000L;
+        private double cloudCoverFraction = 0.35;
+        private int lastTemperature = 70;
+        private long lastRainTimestampMs = 0L;
+        private int lastRainAmount = 0;
+
+        void recordRain(int amount) {
+            lastRainAmount = amount;
+            lastRainTimestampMs = System.currentTimeMillis();
+            cloudCoverFraction = Math.min(1.0, cloudCoverFraction + 0.2);
+        }
+
+        void recordTemperature(int temperature) {
+            lastTemperature = temperature;
+        }
+
+        void nudgeClouds(Random random, boolean isNight) {
+            double target = isRainActive(System.currentTimeMillis())
+                    ? 0.85
+                    : (isNight ? 0.35 : 0.45 + random.nextDouble() * 0.25);
+            cloudCoverFraction += (target - cloudCoverFraction) * 0.2;
+            cloudCoverFraction = clamp(cloudCoverFraction, 0.05, 1.0);
+        }
+
+        Map<String, Object> snapshot(boolean isNight, int hourOfDay) {
+            long now = System.currentTimeMillis();
+            boolean raining = isRainActive(now);
+            Map<String, Object> weather = new LinkedHashMap<>();
+            double clouds = clamp(cloudCoverFraction, 0.0, 1.0);
+            weather.put("isNight", isNight);
+            weather.put("dayPhase", isNight ? "Night" : "Day");
+            weather.put("hourOfDay", hourOfDay);
+            weather.put("cloudCoverFraction", clouds);
+            weather.put("cloudCoverPct", (int) Math.round(clouds * 100));
+            weather.put("raining", raining);
+            weather.put("activeRainAmount", raining ? lastRainAmount : 0);
+            weather.put("lastRainAmount", lastRainAmount);
+            weather.put("secondsSinceRain", lastRainTimestampMs == 0 ? -1
+                    : (int) Math.max(0, (now - lastRainTimestampMs) / 1000));
+            weather.put("temperature", lastTemperature);
+            weather.put("condition", describeCondition(isNight, raining, clouds));
+            return weather;
+        }
+
+        private boolean isRainActive(long now) {
+            return lastRainTimestampMs > 0 && (now - lastRainTimestampMs) <= ACTIVE_RAIN_WINDOW_MS;
+        }
+
+        private static double clamp(double value, double min, double max) {
+            if (value < min) {
+                return min;
+            }
+            if (value > max) {
+                return max;
+            }
+            return value;
+        }
+
+        private String describeCondition(boolean isNight, boolean raining, double clouds) {
+            if (raining) {
+                if (clouds > 0.75) {
+                    return isNight ? "Heavy Night Rain" : "Steady Rain";
+                }
+                return isNight ? "Passing Showers" : "Light Rain";
+            }
+            if (clouds > 0.85) {
+                return isNight ? "Overcast Night" : "Overcast";
+            }
+            if (clouds > 0.6) {
+                return isNight ? "Mostly Cloudy Night" : "Mostly Cloudy";
+            }
+            if (clouds > 0.4) {
+                return isNight ? "Partly Cloudy Night" : "Partly Cloudy";
+            }
+            return isNight ? "Clear Night" : "Sunny";
         }
     }
     

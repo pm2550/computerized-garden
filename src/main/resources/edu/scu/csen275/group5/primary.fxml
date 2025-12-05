@@ -93,6 +93,29 @@
                   <Label fx:id="parasiteStatusLabel" text="None" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
                </GridPane>
             </VBox>
+            <VBox spacing="6">
+               <Label text="Weather" styleClass="section-title"/>
+               <GridPane hgap="16" vgap="8">
+                  <columnConstraints>
+                     <ColumnConstraints halignment="RIGHT" minWidth="130"/>
+                     <ColumnConstraints minWidth="200"/>
+                  </columnConstraints>
+                  <rowConstraints>
+                     <RowConstraints/>
+                     <RowConstraints/>
+                     <RowConstraints/>
+                     <RowConstraints/>
+                  </rowConstraints>
+                  <Label text="Daylight" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                  <Label fx:id="weatherPhaseLabel" text="--" styleClass="bold-label" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                  <Label text="Conditions" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                  <Label fx:id="weatherConditionLabel" text="--" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                  <Label text="Rainfall" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                  <Label fx:id="weatherRainLabel" text="--" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                  <Label text="Cloud Cover" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                  <Label fx:id="weatherCloudLabel" text="--" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+               </GridPane>
+            </VBox>
          </HBox>
 
          <!-- Legacy manual controls retained for developer console reference

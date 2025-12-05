@@ -28,6 +28,10 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.io.IOException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -85,6 +89,18 @@ public class PrimaryController {
     private Label parasiteStatusLabel;
 
     @FXML
+    private Label weatherPhaseLabel;
+
+    @FXML
+    private Label weatherConditionLabel;
+
+    @FXML
+    private Label weatherRainLabel;
+
+    @FXML
+    private Label weatherCloudLabel;
+
+    @FXML
     private Button initButton;
 
     @FXML
@@ -106,6 +122,7 @@ public class PrimaryController {
 
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
     private final GardenSimulationAPI api = new GardenSimulationAPI();
+    private Boolean gardenShowingNight = null;
 
     private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
     private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
@@ -124,33 +141,54 @@ public class PrimaryController {
         configureSpinners();
         configureLogArea();
         configureTimerControls();
-    configureAutoWeatherToggle();
+        configureAutoWeatherToggle();
         hookObservers();
         hydrateLogTail();
-        setGardenBackground();  // set the background image
+        setGardenBackground(false);  // set the background image
     }
     
     // sets the garden background image
-    private void setGardenBackground() {
-        if (gardenBackground != null) {
-            try {
-                String imageUrl = getClass().getResource("garden.png").toExternalForm();
-                String style = String.format(
+    private void setGardenBackground(boolean useNightImage) {
+        if (gardenBackground == null) {
+            return;
+        }
+        if (gardenShowingNight != null && gardenShowingNight == useNightImage) {
+            return;
+        }
+        try {
+            URL imageUrl = resolveGardenImage(useNightImage ? "garden_night.png" : "garden.png");
+            if (imageUrl == null) {
+                gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
+                gardenShowingNight = useNightImage;
+                return;
+            }
+            String style = String.format(
                     "-fx-background-image: url('%s'); " +
                     "-fx-background-size: 100%% auto; " +
-                    "-fx-background-repeat: no-repeat; " +  
-                    "-fx-background-position: center center; " +  
+                    "-fx-background-repeat: no-repeat; " +
+                    "-fx-background-position: center center; " +
                     "-fx-border-color: #4caf50; " +
                     "-fx-border-width: 2;",
-                    imageUrl
-                );
-                gardenBackground.setStyle(style);
-            } catch (Exception e) {
-                System.err.println("Could not load garden.png: " + e.getMessage());
-                // fallback to green background
-                gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
-            }
+                    imageUrl.toExternalForm()
+            );
+            gardenBackground.setStyle(style);
+            gardenShowingNight = useNightImage;
+        } catch (Exception e) {
+            System.err.println("Could not load garden background: " + e.getMessage());
+            gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
         }
+    }
+
+    private URL resolveGardenImage(String resourceName) throws IOException {
+        URL bundled = getClass().getResource(resourceName);
+        if (bundled != null) {
+            return bundled;
+        }
+        Path localAsset = Paths.get("assets", resourceName);
+        if (Files.exists(localAsset)) {
+            return localAsset.toUri().toURL();
+        }
+        return null;
     }
 
     @FXML
@@ -353,11 +391,11 @@ public class PrimaryController {
         }
         autoWeatherCheckBox.setSelected(true);
         api.setAutoEventsEnabled(true);
-        appendLog("Auto weather/events enabled. Random rain, temperature, and parasite events will occur each hour.");
+        appendLog("Auto weather/events enabled. Random rain, temperature, and parasite events will run continuously.");
         autoWeatherCheckBox.selectedProperty().addListener((obs, oldVal, enabled) -> {
             api.setAutoEventsEnabled(enabled);
             appendLog(enabled
-                    ? "Auto weather/events enabled. Random rain, temperature, and parasite events will occur each hour."
+                    ? "Auto weather/events enabled. Random rain, temperature, and parasite events will run continuously."
                     : "Auto weather/events disabled.");
         });
     }
@@ -632,6 +670,7 @@ public class PrimaryController {
         updateGardenMap(names, types, health, water, waterReq, alive);
 
         updateSensorReadings(state);
+        updateWeatherPanel(state);
     }
     
     // rebuild the garden map grid with plant tiles
@@ -728,9 +767,72 @@ public class PrimaryController {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private void updateWeatherPanel(Map<String, Object> state) {
+        if (state == null || weatherPhaseLabel == null) {
+            return;
+        }
+        Map<String, Object> weather = (Map<String, Object>) state.get("weather");
+        if (weather == null) {
+            return;
+        }
+        boolean isNight = Boolean.TRUE.equals(weather.get("isNight"));
+        weatherPhaseLabel.setText(String.valueOf(weather.getOrDefault("dayPhase", isNight ? "Night" : "Day")));
+        if (weatherConditionLabel != null) {
+            weatherConditionLabel.setText(String.valueOf(weather.getOrDefault("condition", "--")));
+        }
+        if (weatherRainLabel != null) {
+            weatherRainLabel.setText(formatRainSummary(weather));
+        }
+        if (weatherCloudLabel != null) {
+            weatherCloudLabel.setText(formatCloudSummary(weather));
+        }
+        setGardenBackground(isNight);
+    }
+
+    private String formatRainSummary(Map<String, Object> weather) {
+        boolean raining = Boolean.TRUE.equals(weather.get("raining"));
+        int active = toInt(weather.get("activeRainAmount"), 0);
+        int last = toInt(weather.get("lastRainAmount"), 0);
+        int secondsSince = toInt(weather.get("secondsSinceRain"), -1);
+
+        if (raining) {
+            return String.format("Raining (%du)", active);
+        }
+        if (secondsSince < 0) {
+            return "Dry — no rain yet";
+        }
+        if (secondsSince < 60) {
+            return String.format("Rain ended <1m ago (%du)", last);
+        }
+        int minutes = secondsSince / 60;
+        if (minutes < 60) {
+            return String.format("Last rain %dm ago (%du)", minutes, last);
+        }
+        int hours = minutes / 60;
+        return String.format("Last rain %dh ago (%du)", hours, last);
+    }
+
+    private String formatCloudSummary(Map<String, Object> weather) {
+        int cloudPct = toInt(weather.get("cloudCoverPct"), 0);
+        double temperatureValue = toDouble(weather.get("temperature"), Double.NaN);
+        if (Double.isNaN(temperatureValue)) {
+            return String.format("%d%% cloud cover", cloudPct);
+        }
+        int roundedTemp = (int) Math.rint(temperatureValue);
+        return String.format("%d%% cloud cover | %d°F", cloudPct, roundedTemp);
+    }
+
     private double toDouble(Object value, double fallback) {
         if (value instanceof Number) {
             return ((Number) value).doubleValue();
+        }
+        return fallback;
+    }
+
+    private int toInt(Object value, int fallback) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
         }
         return fallback;
     }
