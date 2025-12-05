@@ -68,7 +68,34 @@
          <HBox spacing="10" snapToPixel="false">
             <Button fx:id="initButton" text="Initialize Garden" onAction="#handleInitializeGarden"/>
             <Label fx:id="rainGuidanceLabel" text="Rain range: --"/>
+            <Pane HBox.hgrow="ALWAYS"/>
+            <CheckBox fx:id="autoWeatherCheckBox" text="Auto Weather / Random Events"/>
+            <Button text="Developer Console" onAction="#handleOpenDeveloperConsole"/>
          </HBox>
+         <HBox spacing="20" alignment="CENTER_LEFT" snapToPixel="false">
+            <VBox spacing="6">
+               <Label text="Sensors" styleClass="section-title"/>
+               <GridPane hgap="16" vgap="8">
+                  <columnConstraints>
+                     <ColumnConstraints halignment="RIGHT" minWidth="140"/>
+                     <ColumnConstraints minWidth="180"/>
+                  </columnConstraints>
+                  <rowConstraints>
+                     <RowConstraints/>
+                     <RowConstraints/>
+                     <RowConstraints/>
+                  </rowConstraints>
+                  <Label text="Soil Moisture" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                  <Label fx:id="soilMoistureLabel" text="--" styleClass="bold-label" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                  <Label text="Air Temperature" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                  <Label fx:id="airTemperatureLabel" text="--" styleClass="bold-label" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                  <Label text="Parasites" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                  <Label fx:id="parasiteStatusLabel" text="None" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+               </GridPane>
+            </VBox>
+         </HBox>
+
+         <!-- Legacy manual controls retained for developer console reference
          <GridPane hgap="12" vgap="10">
             <columnConstraints>
                <ColumnConstraints percentWidth="33"/>
@@ -100,6 +127,7 @@
                </HBox>
             </VBox>
          </GridPane>
+         -->
       </VBox>
    </bottom>
 </BorderPane>

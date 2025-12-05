@@ -12,6 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,10 +37,13 @@ public class GardenSimulationAPI {
     private final GardenLogger logger;
     private final List<SimulationObserver> observers;  // who's watching the simulation
     private final AtomicInteger hoursElapsed;  // tracks simulation time (1 hour = 1 day)
+    private final Random random;
 
     private boolean initialized;
     private int minWaterRequirement;  // computed from plants after init
     private int maxWaterRequirement;
+    private boolean autoEventsEnabled;
+    private AutoEventConfig autoEventConfig;
 
     public GardenSimulationAPI() {
         this(Paths.get("garden_config.txt"), Paths.get("log.txt"));
@@ -49,8 +55,11 @@ public class GardenSimulationAPI {
         this.logger = new GardenLogger(Objects.requireNonNull(logPath, "logPath"));
         this.observers = new CopyOnWriteArrayList<>();  // thread-safe for observers
         this.hoursElapsed = new AtomicInteger();
+        this.random = new Random();
         this.minWaterRequirement = 5;   // defaults until we know actual plant needs
         this.maxWaterRequirement = 20;
+    this.autoEventConfig = AutoEventConfig.defaultConfig();
+    this.autoEventsEnabled = true;
 
         // wire up logger so we can push log lines to observers (for UI display)
         this.logger.addListener(this::fanOutLogEntry);
@@ -171,7 +180,25 @@ public class GardenSimulationAPI {
 
     private void advanceHourWithReason(String reason) {
         ensureInitialized();
+        if (autoEventsEnabled) {
+            runAutoEventsForHour();
+        }
         closeHour(reason);
+    }
+
+    public synchronized void setAutoEventsEnabled(boolean enabled) {
+        this.autoEventsEnabled = enabled;
+        logger.log("AUTO", enabled ? "Automated weather/events enabled" : "Automated weather/events disabled");
+    }
+
+    public synchronized boolean isAutoEventsEnabled() {
+        return autoEventsEnabled;
+    }
+
+    public synchronized void updateAutoEventConfig(AutoEventConfig config) {
+        if (config != null) {
+            this.autoEventConfig = config;
+        }
     }
 
     private void refreshAndBroadcastState() {
@@ -296,6 +323,151 @@ public class GardenSimulationAPI {
                 .mapToInt(Plant::getWaterRequirement)
                 .max()
                 .orElse(20);
+    }
+
+    private void runAutoEventsForHour() {
+        if (autoEventConfig == null) {
+            autoEventConfig = AutoEventConfig.defaultConfig();
+        }
+
+        StringBuilder summary = new StringBuilder();
+
+        if (autoEventConfig.getRainChance() > 0.0) {
+            if (random.nextDouble() < autoEventConfig.getRainChance()) {
+                int rainAmount = generateRandomRainAmount();
+                int applied = applyRainSilently(rainAmount);
+                if (applied > 0) {
+                    summary.append(String.format("rain=%du ", applied));
+                }
+            }
+        }
+
+        if (autoEventConfig.getTemperatureChance() > 0.0) {
+            if (random.nextDouble() < autoEventConfig.getTemperatureChance()) {
+                int temp = generateRandomTemperature();
+                applyTemperatureSilently(temp);
+                summary.append(String.format("temp=%d°F ", temp));
+            }
+        }
+
+        if (autoEventConfig.getParasiteChance() > 0.0) {
+            if (random.nextDouble() < autoEventConfig.getParasiteChance()) {
+                String parasite = pickRandomParasite();
+                if (!parasite.isEmpty()) {
+                    applyParasiteSilently(parasite);
+                    summary.append(String.format("parasite=%s ", parasite));
+                }
+            }
+        }
+
+        if (summary.length() > 0) {
+            refreshWaterStats();
+            logger.log("AUTO", "Automated events -> " + summary.toString().trim());
+        }
+    }
+
+    private int generateRandomRainAmount() {
+        int min = Math.max(1, minWaterRequirement);
+        int max = Math.max(min, maxWaterRequirement);
+        return randomBetween(min, max);
+    }
+
+    private int generateRandomTemperature() {
+        int min = Math.max(40, autoEventConfig.getMinTemperature());
+        int max = Math.min(120, autoEventConfig.getMaxTemperature());
+        if (min > max) {
+            int swap = min;
+            min = max;
+            max = swap;
+        }
+        return randomBetween(min, max);
+    }
+
+    private int randomBetween(int min, int max) {
+        if (min >= max) {
+            return min;
+        }
+        return min + random.nextInt((max - min) + 1);
+    }
+
+    private int applyRainSilently(int requested) {
+        int validated = clampRainfall(requested);
+        garden.applyRainfall(validated);
+        return validated;
+    }
+
+    private void applyTemperatureSilently(int requested) {
+        int clamped = Math.max(40, Math.min(120, requested));
+        garden.applyTemperature(clamped);
+    }
+
+    private void applyParasiteSilently(String parasiteName) {
+        String cleaned = sanitizeParasiteName(parasiteName);
+        if (cleaned.isEmpty()) {
+            return;
+        }
+        logAffectedPlants(cleaned);
+        garden.triggerParasiteInfestation(cleaned);
+    }
+
+    private String pickRandomParasite() {
+        Set<String> parasites = new HashSet<>();
+        for (Plant plant : garden.getPlants()) {
+            parasites.addAll(plant.getVulnerableParasites());
+        }
+        if (parasites.isEmpty()) {
+            return "";
+        }
+        int index = random.nextInt(parasites.size());
+        int i = 0;
+        for (String parasite : parasites) {
+            if (i == index) {
+                return parasite;
+            }
+            i++;
+        }
+        return "";
+    }
+
+    public static class AutoEventConfig {
+        private final double rainChance;
+        private final double temperatureChance;
+        private final double parasiteChance;
+        private final int minTemperature;
+        private final int maxTemperature;
+
+        private AutoEventConfig(double rainChance, double temperatureChance, double parasiteChance,
+                                int minTemperature, int maxTemperature) {
+            this.rainChance = rainChance;
+            this.temperatureChance = temperatureChance;
+            this.parasiteChance = parasiteChance;
+            this.minTemperature = minTemperature;
+            this.maxTemperature = maxTemperature;
+        }
+
+        public static AutoEventConfig defaultConfig() {
+            return new AutoEventConfig(0.65, 1.0, 0.25, 55, 95);
+        }
+
+        public double getRainChance() {
+            return rainChance;
+        }
+
+        public double getTemperatureChance() {
+            return temperatureChance;
+        }
+
+        public double getParasiteChance() {
+            return parasiteChance;
+        }
+
+        public int getMinTemperature() {
+            return minTemperature;
+        }
+
+        public int getMaxTemperature() {
+            return maxTemperature;
+        }
     }
 
     // clamp rain amount to valid range (per spec: based on plant water needs)

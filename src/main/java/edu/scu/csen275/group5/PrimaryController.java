@@ -8,7 +8,10 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
@@ -19,10 +22,14 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -69,13 +76,13 @@ public class PrimaryController {
     private TextArea logArea;
 
     @FXML
-    private Spinner<Integer> rainSpinner;
+    private Label soilMoistureLabel;
 
     @FXML
-    private Spinner<Integer> temperatureSpinner;
+    private Label airTemperatureLabel;
 
     @FXML
-    private TextField parasiteField;
+    private Label parasiteStatusLabel;
 
     @FXML
     private Button initButton;
@@ -85,6 +92,17 @@ public class PrimaryController {
 
     @FXML
     private ComboBox<String> speedComboBox;
+
+    @FXML
+    private CheckBox autoWeatherCheckBox;
+
+    private Spinner<Integer> rainSpinner;
+
+    private Spinner<Integer> temperatureSpinner;
+
+    private TextField parasiteField;
+
+    private Stage developerStage;
 
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
     private final GardenSimulationAPI api = new GardenSimulationAPI();
@@ -106,6 +124,7 @@ public class PrimaryController {
         configureSpinners();
         configureLogArea();
         configureTimerControls();
+    configureAutoWeatherToggle();
         hookObservers();
         hydrateLogTail();
         setGardenBackground();  // set the background image
@@ -152,6 +171,10 @@ public class PrimaryController {
     @FXML
     private void handleRainEvent() {
         try {
+            if (rainSpinner == null) {
+                appendLog("Developer console not initialized - no rain control available.");
+                return;
+            }
             api.rain(rainSpinner.getValue());
         } catch (Exception ex) {
             appendLog("Rain event failed: " + ex.getMessage());
@@ -161,6 +184,10 @@ public class PrimaryController {
     @FXML
     private void handleTemperatureEvent() {
         try {
+            if (temperatureSpinner == null) {
+                appendLog("Developer console not initialized - no temperature control available.");
+                return;
+            }
             api.temperature(temperatureSpinner.getValue());
         } catch (Exception ex) {
             appendLog("Temperature event failed: " + ex.getMessage());
@@ -170,6 +197,10 @@ public class PrimaryController {
     @FXML
     private void handleParasiteEvent() {
         try {
+            if (parasiteField == null) {
+                appendLog("Developer console not initialized - no parasite control available.");
+                return;
+            }
             api.parasite(parasiteField.getText());
             parasiteField.clear();
         } catch (Exception ex) {
@@ -199,6 +230,53 @@ public class PrimaryController {
     @FXML
     private void handleOpenHelp() throws IOException {
         App.setRoot("secondary");
+    }
+
+    @FXML
+    private void handleOpenDeveloperConsole() {
+        if (developerStage == null) {
+            buildDeveloperConsole();
+        }
+        if (developerStage != null) {
+            developerStage.show();
+            developerStage.toFront();
+        }
+    }
+
+    private void buildDeveloperConsole() {
+        developerStage = new Stage();
+        developerStage.setTitle("Developer Console");
+        if (initButton != null && initButton.getScene() != null) {
+            developerStage.initOwner(initButton.getScene().getWindow());
+        }
+
+        rainSpinner = new Spinner<>();
+        temperatureSpinner = new Spinner<>();
+        parasiteField = new TextField();
+        configureSpinners();
+        updateRainGuidance();
+
+        Button rainButton = new Button("Dispatch Rain");
+        rainButton.setOnAction(e -> handleRainEvent());
+        HBox rainRow = new HBox(8, rainSpinner, rainButton);
+
+        Button temperatureButton = new Button("Set Temperature");
+        temperatureButton.setOnAction(e -> handleTemperatureEvent());
+        HBox temperatureRow = new HBox(8, temperatureSpinner, temperatureButton);
+
+        Button parasiteButton = new Button("Release Parasite");
+        parasiteButton.setOnAction(e -> handleParasiteEvent());
+        HBox parasiteRow = new HBox(8, parasiteField, parasiteButton);
+
+        VBox root = new VBox(12,
+                new Label("Manual Weather & Parasite Controls"),
+                new VBox(6, new Label("Rain (units)"), rainRow),
+                new VBox(6, new Label("Temperature (°F)"), temperatureRow),
+                new VBox(6, new Label("Parasite"), parasiteRow));
+        root.setPadding(new Insets(16));
+
+        Scene scene = new Scene(root);
+        developerStage.setScene(scene);
     }
 
     private void hookObservers() {
@@ -234,6 +312,9 @@ public class PrimaryController {
     }
 
     private void configureSpinners() {
+        if (rainSpinner == null || temperatureSpinner == null || parasiteField == null) {
+            return;
+        }
         rainSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(5, 20, 10));
         temperatureSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(40, 120, 72));
         rainSpinner.setEditable(true);
@@ -264,6 +345,21 @@ public class PrimaryController {
         speedMultiplier = 1.0;
         lastSpeedSelection = "1x";
         updateTimerLabel();
+    }
+
+    private void configureAutoWeatherToggle() {
+        if (autoWeatherCheckBox == null) {
+            return;
+        }
+        autoWeatherCheckBox.setSelected(true);
+        api.setAutoEventsEnabled(true);
+        appendLog("Auto weather/events enabled. Random rain, temperature, and parasite events will occur each hour.");
+        autoWeatherCheckBox.selectedProperty().addListener((obs, oldVal, enabled) -> {
+            api.setAutoEventsEnabled(enabled);
+            appendLog(enabled
+                    ? "Auto weather/events enabled. Random rain, temperature, and parasite events will occur each hour."
+                    : "Auto weather/events disabled.");
+        });
     }
 
     private void onSpeedSelectionChanged(String oldValue, String newValue) {
@@ -534,6 +630,8 @@ public class PrimaryController {
         
         // update garden map grid
         updateGardenMap(names, types, health, water, waterReq, alive);
+
+        updateSensorReadings(state);
     }
     
     // rebuild the garden map grid with plant tiles
@@ -595,11 +693,46 @@ public class PrimaryController {
 
     private void updateRainGuidance() {
         rainGuidanceLabel.setText(String.format("Rain range: %d - %d units", api.getMinWaterRequirement(), api.getMaxWaterRequirement()));
-        SpinnerValueFactory.IntegerSpinnerValueFactory factory =
-                (SpinnerValueFactory.IntegerSpinnerValueFactory) rainSpinner.getValueFactory();
-        factory.setMin(api.getMinWaterRequirement());
-        factory.setMax(api.getMaxWaterRequirement());
-        factory.setValue(api.getMinWaterRequirement());
+        if (rainSpinner != null) {
+            SpinnerValueFactory.IntegerSpinnerValueFactory factory =
+                    (SpinnerValueFactory.IntegerSpinnerValueFactory) rainSpinner.getValueFactory();
+            factory.setMin(api.getMinWaterRequirement());
+            factory.setMax(api.getMaxWaterRequirement());
+            factory.setValue(api.getMinWaterRequirement());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void updateSensorReadings(Map<String, Object> state) {
+        if (state == null) {
+            return;
+        }
+
+        if (airTemperatureLabel != null) {
+            double ambient = toDouble(state.get("temperature"), Double.NaN);
+            airTemperatureLabel.setText(Double.isNaN(ambient) ? "--" : String.format("%.0f °F", ambient));
+        }
+
+        Map<String, Object> soil = (Map<String, Object>) state.get("soil");
+        if (soilMoistureLabel != null) {
+            double moisture = soil != null ? toDouble(soil.get("moisture"), Double.NaN) : Double.NaN;
+            soilMoistureLabel.setText(Double.isNaN(moisture) ? "--" : String.format("%.1f %%", moisture));
+        }
+
+        if (parasiteStatusLabel != null) {
+            List<String> pests = soil != null ? (List<String>) soil.getOrDefault("pests", Collections.emptyList()) : Collections.emptyList();
+            List<Boolean> infested = (List<Boolean>) state.getOrDefault("plantInfested", Collections.emptyList());
+            long infestedCount = infested.stream().filter(Boolean.TRUE::equals).count();
+            String pestSummary = pests.isEmpty() ? "None" : String.join(", ", pests);
+            parasiteStatusLabel.setText(String.format("Soil pests: %s | Infested plants: %d", pestSummary, infestedCount));
+        }
+    }
+
+    private double toDouble(Object value, double fallback) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        return fallback;
     }
 
     public static class PlantStatusRow {
