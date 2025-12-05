@@ -49,11 +49,14 @@ public class Plant {
      * @param waterAmount amount of water to apply
      */
     public void addWater(int waterAmount) {
+        if (!alive) {
+            return;
+        }
         this.currentWater += waterAmount;
         this.daysSinceWatering = 0;  // Reset the counter
         // Cap the water at 1.5x requirement to prevent over-watering damage
         if (this.currentWater > waterRequirement * 1.5) {
-            this.health -= 5;  // Over-watering damage
+            changeHealth(-5);  // Over-watering damage
             this.currentWater = (int)(waterRequirement * 1.5);
         }
     }
@@ -62,6 +65,9 @@ public class Plant {
      * Simulate one day's water consumption
      */
     public void consumeWater() {
+        if (!alive) {
+            return;
+        }
         this.currentWater -= this.waterRequirement;
         if (this.currentWater < 0) {
             this.daysSinceWatering++;
@@ -69,11 +75,11 @@ public class Plant {
             
             // Health decreases if plant is not watered
             if (this.daysSinceWatering == 1) {
-                this.health -= 10;
+                changeHealth(-10);
             } else if (this.daysSinceWatering == 2) {
-                this.health -= 20;
+                changeHealth(-20);
             } else if (this.daysSinceWatering >= 3) {
-                this.health -= 30;  // Rapid health decline after 3 days
+                changeHealth(-30);  // Rapid health decline after 3 days
             }
         }
     }
@@ -83,18 +89,21 @@ public class Plant {
      * @param temperature current temperature in Fahrenheit
      */
     public void applyTemperatureStress(int temperature) {
+        if (!alive) {
+            return;
+        }
         // Check if temperature is within tolerance range
         if (temperature < minTempTolerance || temperature > maxTempTolerance) {
-            this.health -= 15;  // Severe damage outside tolerance
+            changeHealth(-15);  // Severe damage outside tolerance
             return;
         }
 
         // Check if within optimal range
         if (temperature >= optimalTempMin && temperature <= optimalTempMax) {
-            this.health += 2;  // Slight health recovery in optimal conditions
+            changeHealth(2);  // Slight health recovery in optimal conditions
         } else {
             // Outside optimal but within tolerance
-            this.health -= 5;
+            changeHealth(-5);
         }
     }
 
@@ -103,9 +112,12 @@ public class Plant {
      * @param parasiteName name of the parasite
      */
     public void infectParasite(String parasiteName) {
+        if (!alive) {
+            return;
+        }
         if (vulnerableParasites.contains(parasiteName)) {
             this.infested = true;
-            this.health -= 25;  // Parasite causes significant health loss
+            changeHealth(-25);  // Parasite causes significant health loss
         }
     }
 
@@ -115,7 +127,7 @@ public class Plant {
     public void treatParasite() {
         if (this.infested) {
             this.infested = false;
-            this.health -= 10;  // Treatment also damages plant slightly
+            changeHealth(-10);  // Treatment also damages plant slightly
         }
     }
 
@@ -123,21 +135,13 @@ public class Plant {
      * Advance one day in the simulation
      */
     public void advanceDay() {
+        if (!alive) {
+            return;
+        }
         this.age++;
         this.consumeWater();
-        
-        // Check if plant dies
-        if (this.health <= 0) {
-            this.alive = false;
-        }
-        
-        // Clamp health to 0-100 range
         if (this.health > 100) {
             this.health = 100;
-        }
-        if (this.health < 0) {
-            this.health = 0;
-            this.alive = false;
         }
     }
 
@@ -161,6 +165,21 @@ public class Plant {
 
     public void setHealth(double health) {
         this.health = Math.max(0, Math.min(100, health));
+        this.alive = this.health > 0;
+    }
+
+    private void changeHealth(double delta) {
+        if (!alive) {
+            return;
+        }
+        this.health += delta;
+        if (this.health > 100) {
+            this.health = 100;
+        }
+        if (this.health <= 0) {
+            this.health = 0;
+            this.alive = false;
+        }
     }
 
     @Override

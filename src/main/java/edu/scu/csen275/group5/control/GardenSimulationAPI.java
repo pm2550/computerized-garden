@@ -16,10 +16,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -29,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Required by project spec - implements all methods from the Gardening System API doc.
  */
 public class GardenSimulationAPI {
+    private static final int AUTO_SLICES_PER_HOUR = 6; // 10 simulated minutes per slice
 
     public interface SimulationObserver {
         // UI or external system can watch garden changes through this
@@ -48,8 +45,8 @@ public class GardenSimulationAPI {
     private int maxWaterRequirement;
     private boolean autoEventsEnabled;
     private AutoEventConfig autoEventConfig;
-    private ScheduledExecutorService autoEventExecutor;
     private final WeatherTelemetry weatherTelemetry;
+    private final AtomicInteger slicesProcessedThisHour;
 
     public GardenSimulationAPI() {
         this(Paths.get("garden_config.txt"), Paths.get("log.txt"));
@@ -66,8 +63,8 @@ public class GardenSimulationAPI {
         this.maxWaterRequirement = 20;
         this.autoEventConfig = AutoEventConfig.defaultConfig();
         this.autoEventsEnabled = true;
-        this.autoEventExecutor = null;
     this.weatherTelemetry = new WeatherTelemetry();
+    this.slicesProcessedThisHour = new AtomicInteger();
 
         // wire up logger so we can push log lines to observers (for UI display)
         this.logger.addListener(this::fanOutLogEntry);
@@ -100,9 +97,6 @@ public class GardenSimulationAPI {
         refreshWaterStats();  // figure out min/max water needs from actual plants
         logger.log("INIT", "Garden initialized with " + garden.getPlants().size() + " plants");
         dispatchState(captureState());
-        if (autoEventsEnabled) {
-            startAutoEventsScheduler();
-        }
     }
 
     /**
@@ -170,11 +164,7 @@ public class GardenSimulationAPI {
             logger.log("PARASITE", "Ignored parasite event because name was empty");
             return;
         }
-        
-        // Log ALERT for affected plants before applying infestation
-        logAffectedPlants(cleaned);
-        
-        garden.triggerParasiteInfestation(cleaned);
+        applyParasiteSilently(cleaned, false);
         refreshAndBroadcastState();
     }
 
@@ -199,11 +189,6 @@ public class GardenSimulationAPI {
 
     public synchronized void setAutoEventsEnabled(boolean enabled) {
         this.autoEventsEnabled = enabled;
-        if (enabled) {
-            startAutoEventsScheduler();
-        } else {
-            stopAutoEventsScheduler();
-        }
         logger.log("AUTO", enabled ? "Automated weather/events enabled" : "Automated weather/events disabled");
     }
 
@@ -214,9 +199,6 @@ public class GardenSimulationAPI {
     public synchronized void updateAutoEventConfig(AutoEventConfig config) {
         if (config != null) {
             this.autoEventConfig = config;
-            if (autoEventsEnabled) {
-                restartAutoEventsScheduler();
-            }
         }
     }
 
@@ -303,6 +285,9 @@ public class GardenSimulationAPI {
 
     // pushes state update to observers
     private void closeHour(String reason) {
+        runRemainingSlicesForHour();
+    garden.advanceDay();
+    slicesProcessedThisHour.set(0);
         int hour = hoursElapsed.incrementAndGet();
         logger.log("HOUR", reason + ". Hour " + hour + " closed.");
         refreshAndBroadcastState();
@@ -349,86 +334,68 @@ public class GardenSimulationAPI {
                 .orElse(20);
     }
 
-    private synchronized void startAutoEventsScheduler() {
-        if (!autoEventsEnabled || !initialized) {
+    public synchronized void processAutoSlices(int slices) {
+        ensureInitialized();
+        if (slices <= 0) {
             return;
         }
-        if (autoEventExecutor != null && !autoEventExecutor.isShutdown()) {
-            return;
-        }
-        long intervalSeconds = Math.max(1L, autoEventConfig.getIntervalSeconds());
-        ThreadFactory factory = runnable -> {
-            Thread t = new Thread(runnable, "garden-auto-events");
-            t.setDaemon(true);
-            return t;
-        };
-        autoEventExecutor = Executors.newSingleThreadScheduledExecutor(factory);
-        autoEventExecutor.scheduleAtFixedRate(() -> {
-            try {
-                runAutoEventsRealtime();
-            } catch (Exception ex) {
-                logger.log("AUTO", "Auto event tick failed: " + ex.getMessage());
+        for (int i = 0; i < slices; i++) {
+            if (slicesProcessedThisHour.get() >= AUTO_SLICES_PER_HOUR) {
+                break;
             }
-        }, 0, intervalSeconds, TimeUnit.SECONDS);
-    }
-
-    private synchronized void stopAutoEventsScheduler() {
-        if (autoEventExecutor != null) {
-            autoEventExecutor.shutdownNow();
-            autoEventExecutor = null;
+            runAutoEventsSlice();
+            slicesProcessedThisHour.incrementAndGet();
         }
     }
 
-    private synchronized void restartAutoEventsScheduler() {
-        stopAutoEventsScheduler();
-        startAutoEventsScheduler();
-    }
-
-    private void runAutoEventsRealtime() {
-        if (!autoEventsEnabled) {
+    private void runRemainingSlicesForHour() {
+        if (!initialized) {
             return;
         }
-        synchronized (this) {
-            if (!initialized) {
-                return;
-            }
-            if (autoEventConfig == null) {
-                autoEventConfig = AutoEventConfig.defaultConfig();
-            }
+    int remaining = AUTO_SLICES_PER_HOUR - slicesProcessedThisHour.get();
+        if (remaining > 0) {
+            processAutoSlices(remaining);
+        }
+    }
 
-            StringBuilder summary = new StringBuilder();
-            int hourOfDay = getCurrentHourOfDay();
-            boolean isNight = isNightHour(hourOfDay);
+    private void runAutoEventsSlice() {
+        if (autoEventConfig == null) {
+            autoEventConfig = AutoEventConfig.defaultConfig();
+        }
+        int hourOfDay = getCurrentHourOfDay();
+        boolean isNight = isNightHour(hourOfDay);
 
-            if (autoEventConfig.getRainChance() > 0.0 && random.nextDouble() < autoEventConfig.getRainChance()) {
-                int rainAmount = generateRandomRainAmount();
-                int applied = applyRainSilently(rainAmount);
-                if (applied > 0) {
-                    summary.append(String.format("rain=%du ", applied));
-                }
+        StringBuilder summary = new StringBuilder();
+
+        if (autoEventsEnabled && autoEventConfig.getRainChance() > 0.0 && random.nextDouble() < autoEventConfig.getRainChance()) {
+            int rainAmount = generateRandomRainAmount();
+            int applied = applyRainSilently(rainAmount);
+            if (applied > 0) {
+                summary.append(String.format("rain=%du ", applied));
             }
+        }
 
-            if (autoEventConfig.getTemperatureChance() > 0.0 && random.nextDouble() < autoEventConfig.getTemperatureChance()) {
-                int temp = computeDiurnalTemperatureWithVariation();
-                applyTemperatureSilently(temp);
-                summary.append(String.format("temp=%d°F(time) ", temp));
-            }
+        if (autoEventsEnabled && autoEventConfig.getTemperatureChance() > 0.0 && random.nextDouble() < autoEventConfig.getTemperatureChance()) {
+            int temp = computeDiurnalTemperatureWithVariation();
+            applyTemperatureSilently(temp);
+            summary.append(String.format("temp=%d°F(time) ", temp));
+        }
 
-            if (autoEventConfig.getParasiteChance() > 0.0 && random.nextDouble() < autoEventConfig.getParasiteChance()) {
-                String parasite = pickRandomParasite();
-                if (!parasite.isEmpty()) {
-                    applyParasiteSilently(parasite);
+        if (autoEventsEnabled && autoEventConfig.getParasiteChance() > 0.0 && random.nextDouble() < autoEventConfig.getParasiteChance()) {
+            String parasite = pickRandomParasite();
+            if (!parasite.isEmpty()) {
+                if (applyParasiteSilently(parasite, true)) {
                     summary.append(String.format("parasite=%s ", parasite));
                 }
             }
+        }
 
-            weatherTelemetry.nudgeClouds(random, isNight);
-            if (summary.length() > 0) {
-                refreshAndBroadcastState();
-                logger.log("AUTO", "Automated tick -> " + summary.toString().trim());
-            } else {
-                dispatchState(captureState());
-            }
+        weatherTelemetry.nudgeClouds(random, isNight);
+        if (summary.length() > 0) {
+            refreshAndBroadcastState();
+            logger.log("AUTO", "Automated slice -> " + summary.toString().trim());
+        } else {
+            dispatchState(captureState());
         }
     }
 
@@ -464,8 +431,8 @@ public class GardenSimulationAPI {
     }
 
     private int getCurrentHourOfDay() {
-        int totalHours = hoursElapsed.get();
-        int hour = totalHours % 24;
+    int totalSlices = hoursElapsed.get() * AUTO_SLICES_PER_HOUR + slicesProcessedThisHour.get();
+        int hour = (totalSlices / AUTO_SLICES_PER_HOUR) % 24;
         if (hour < 0) {
             hour += 24;
         }
@@ -497,13 +464,27 @@ public class GardenSimulationAPI {
         weatherTelemetry.recordTemperature(clamped);
     }
 
-    private void applyParasiteSilently(String parasiteName) {
+    private boolean applyParasiteSilently(String parasiteName, boolean enforceLimit) {
         String cleaned = sanitizeParasiteName(parasiteName);
         if (cleaned.isEmpty()) {
-            return;
+            return false;
+        }
+        if (enforceLimit && !canIntroduceParasite(cleaned)) {
+            logger.log("AUTO", "Skipped parasite event for " + cleaned + " (pest load capped)");
+            return false;
         }
         logAffectedPlants(cleaned);
         garden.triggerParasiteInfestation(cleaned);
+        return true;
+    }
+
+    private boolean canIntroduceParasite(String parasiteName) {
+        List<String> existing = garden.getSoil().getCurrentPests();
+        if (existing.contains(parasiteName)) {
+            return true;
+        }
+        int maxConcurrent = autoEventConfig != null ? autoEventConfig.getMaxConcurrentParasites() : 2;
+        return existing.size() < Math.max(1, maxConcurrent);
     }
 
     private String pickRandomParasite() {
@@ -531,23 +512,23 @@ public class GardenSimulationAPI {
         private final double parasiteChance;
         private final int minTemperature;
         private final int maxTemperature;
-        private final int intervalSeconds;
         private final int temperatureJitter;
+        private final int maxConcurrentParasites;
 
         private AutoEventConfig(double rainChance, double temperatureChance, double parasiteChance,
                                 int minTemperature, int maxTemperature,
-                                int intervalSeconds, int temperatureJitter) {
+                                int temperatureJitter, int maxConcurrentParasites) {
             this.rainChance = rainChance;
             this.temperatureChance = temperatureChance;
             this.parasiteChance = parasiteChance;
             this.minTemperature = minTemperature;
             this.maxTemperature = maxTemperature;
-            this.intervalSeconds = intervalSeconds;
             this.temperatureJitter = temperatureJitter;
+            this.maxConcurrentParasites = maxConcurrentParasites;
         }
 
         public static AutoEventConfig defaultConfig() {
-            return new AutoEventConfig(0.25, 0.9, 0.08, 55, 95, 4, 3);
+            return new AutoEventConfig(0.35, 0.9, 0.04, 55, 95, 3, 2);
         }
 
         public double getRainChance() {
@@ -570,12 +551,12 @@ public class GardenSimulationAPI {
             return maxTemperature;
         }
 
-        public int getIntervalSeconds() {
-            return intervalSeconds;
-        }
-
         public int getTemperatureJitter() {
             return temperatureJitter;
+        }
+
+        public int getMaxConcurrentParasites() {
+            return maxConcurrentParasites;
         }
     }
 

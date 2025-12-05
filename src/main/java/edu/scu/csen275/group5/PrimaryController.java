@@ -126,6 +126,7 @@ public class PrimaryController {
 
     private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
     private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
+    private static final int AUTO_SLICES_PER_HOUR = 6;
     private AnimationTimer hourTimer;
     private double speedMultiplier = 1.0;
     private double remainingSeconds = BASE_HOUR_SECONDS;
@@ -134,6 +135,7 @@ public class PrimaryController {
     private int lastKnownSimHour = 0;
     private String lastSpeedSelection = "1x";
     private boolean suppressSpeedSelectionUpdate = false;
+    private int autoSlicesCompletedThisHour = 0;
 
     @FXML
     public void initialize() {
@@ -249,6 +251,7 @@ public class PrimaryController {
     @FXML
     private void handleNextHour() {
         try {
+            completePendingAutoSlices();
             api.advanceHourManually();
             resetTimerCountdown();
         } catch (Exception ex) {
@@ -391,11 +394,11 @@ public class PrimaryController {
         }
         autoWeatherCheckBox.setSelected(true);
         api.setAutoEventsEnabled(true);
-        appendLog("Auto weather/events enabled. Random rain, temperature, and parasite events will run continuously.");
+        appendLog("Auto weather/events enabled. Random rain, temperature, and parasite events run every 10 simulated minutes.");
         autoWeatherCheckBox.selectedProperty().addListener((obs, oldVal, enabled) -> {
             api.setAutoEventsEnabled(enabled);
             appendLog(enabled
-                    ? "Auto weather/events enabled. Random rain, temperature, and parasite events will run continuously."
+                    ? "Auto weather/events enabled. Random rain, temperature, and parasite events run every 10 simulated minutes."
                     : "Auto weather/events disabled.");
         });
     }
@@ -519,6 +522,7 @@ public class PrimaryController {
     private void resetTimerCountdown() {
         remainingSeconds = getHourDurationSeconds();
         lastTickNanos = 0L;
+        autoSlicesCompletedThisHour = 0;
         updateTimerLabel();
     }
 
@@ -526,6 +530,7 @@ public class PrimaryController {
         if (!timerActive) {
             return;
         }
+        autoSlicesCompletedThisHour = 0;
         remainingSeconds = getHourDurationSeconds();
         updateTimerLabel();
     }
@@ -541,6 +546,24 @@ public class PrimaryController {
         }
         timerStatusLabel.setText(String.format("Timer running @ %sx", formatSpeedLabel()));
         updateClockDisplay();
+    }
+
+    private void triggerAutoSlicesForProgress(double progressFraction) {
+        progressFraction = Math.max(0.0, Math.min(1.0, progressFraction));
+        int requiredSlices = (int) Math.floor(progressFraction * AUTO_SLICES_PER_HOUR);
+        int missing = requiredSlices - autoSlicesCompletedThisHour;
+        if (missing > 0) {
+            api.processAutoSlices(missing);
+            autoSlicesCompletedThisHour += missing;
+        }
+    }
+
+    private void completePendingAutoSlices() {
+        int missing = AUTO_SLICES_PER_HOUR - autoSlicesCompletedThisHour;
+        if (missing > 0) {
+            api.processAutoSlices(missing);
+            autoSlicesCompletedThisHour = AUTO_SLICES_PER_HOUR;
+        }
     }
 
     private void updateClockDisplay() {
@@ -594,8 +617,17 @@ public class PrimaryController {
         lastTickNanos = now;
         remainingSeconds -= deltaSeconds;
 
+        double hourDuration = getHourDurationSeconds();
+        if (hourDuration <= 0) {
+            hourDuration = BASE_HOUR_SECONDS;
+        }
+        double elapsedCurrentHour = hourDuration - remainingSeconds;
+        double progressFraction = Math.max(0.0, Math.min(1.0, elapsedCurrentHour / hourDuration));
+        triggerAutoSlicesForProgress(progressFraction);
+
         while (timerActive && remainingSeconds <= 0) {
-            remainingSeconds += getHourDurationSeconds();
+            completePendingAutoSlices();
+            remainingSeconds += hourDuration;
             try {
                 api.advanceHourAutomatically();
             } catch (Exception ex) {
@@ -603,6 +635,7 @@ public class PrimaryController {
                 stopHourTimer();
                 break;
             }
+            hourDuration = getHourDurationSeconds();
         }
 
         updateTimerLabel();
