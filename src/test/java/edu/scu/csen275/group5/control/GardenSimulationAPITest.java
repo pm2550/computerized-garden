@@ -20,11 +20,14 @@ class GardenSimulationAPITest {
 
     @BeforeEach
     void setUp() throws IOException {
+        // Reset singleton before each test
+        GardenSimulationAPI.resetInstance();
+        
         tempDir = Files.createTempDirectory("garden-api-test");
         configPath = tempDir.resolve("garden.conf");
         logPath = tempDir.resolve("log.txt");
         writeConfig();
-        api = new GardenSimulationAPI(configPath, logPath);
+        api = GardenSimulationAPI.getInstance(configPath, logPath);
     }
 
     @Test

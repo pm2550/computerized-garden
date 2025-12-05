@@ -121,8 +121,11 @@ public class PrimaryController {
     private Stage developerStage;
 
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
-    private final GardenSimulationAPI api = new GardenSimulationAPI();
+    private final GardenSimulationAPI api = GardenSimulationAPI.getInstance();
     private Boolean gardenShowingNight = null;
+    
+    // Static observer to prevent duplicates across scene switches
+    private static GardenSimulationAPI.SimulationObserver sharedObserver;
 
     private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
     private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
@@ -147,6 +150,17 @@ public class PrimaryController {
         hookObservers();
         hydrateLogTail();
         setGardenBackground(false);  // set the background image
+        
+        // If garden is already initialized (scene switch), disable init button and update UI
+        if (api.isInitialized()) {
+            initButton.setDisable(true);
+            applyState(api.currentState());
+            summaryLabel.setText("Garden online — ready for events");
+            // Restart timer if it was running
+            if (timerActive) {
+                startHourTimer();
+            }
+        }
     }
     
     // sets the garden background image
@@ -321,17 +335,20 @@ public class PrimaryController {
     }
 
     private void hookObservers() {
-        api.addObserver(new GardenSimulationAPI.SimulationObserver() {
-            @Override
-            public void onStateChanged(Map<String, Object> stateSnapshot) {
-                Platform.runLater(() -> applyState(stateSnapshot));
-            }
+        if (sharedObserver == null) {
+            sharedObserver = new GardenSimulationAPI.SimulationObserver() {
+                @Override
+                public void onStateChanged(Map<String, Object> stateSnapshot) {
+                    Platform.runLater(() -> applyState(stateSnapshot));
+                }
 
-            @Override
-            public void onLogAppended(String logEntry) {
-                Platform.runLater(() -> appendLog(logEntry));
-            }
-        });
+                @Override
+                public void onLogAppended(String logEntry) {
+                    Platform.runLater(() -> appendLog(logEntry));
+                }
+            };
+            api.addObserver(sharedObserver);
+        }
     }
 
     private void configureTable() {

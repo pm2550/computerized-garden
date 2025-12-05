@@ -13,20 +13,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Random;
-import java.util.Set;
-import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Main API for the garden simulation. Scripts call these methods to simulate
  * weather and pest events. The UI also hooks into this to show what's happening.
  * 
+ * REFACTORED: Now uses dedicated components for time management, weather simulation,
+ * and event generation. Public API unchanged for backward compatibility.
+ * 
+ * SINGLETON: Ensures garden state persists across scene changes in UI.
+ * 
  * Required by project spec - implements all methods from the Gardening System API doc.
  */
 public class GardenSimulationAPI {
-    private static final int AUTO_SLICES_PER_HOUR = 6; // 10 simulated minutes per slice
 
     public interface SimulationObserver {
         // UI or external system can watch garden changes through this
@@ -34,45 +34,91 @@ public class GardenSimulationAPI {
         void onLogAppended(String logEntry);
     }
 
-    private final Garden garden;
-    private final Path configPath;
-    private final GardenLogger logger;
-    private final List<SimulationObserver> observers;  // who's watching the simulation
-    private final AtomicInteger hoursElapsed;  // tracks simulation time (1 hour = 1 day)
-    private final Random random;
+    // Singleton instance
+    private static GardenSimulationAPI instance;
 
-    private boolean initialized;
-    private int minWaterRequirement;  // computed from plants after init
-    private int maxWaterRequirement;
-    private boolean autoEventsEnabled;
-    private AutoEventConfig autoEventConfig;
-    private final WeatherTelemetry weatherTelemetry;
-    private final AtomicInteger slicesProcessedThisHour;
+    // Core components
+    private final Garden garden;
+    private final GardenLogger logger;
     private final ModuleManager moduleManager;
     private final SensorBridge sensorBridge;
+    
+    // New refactored components
+    private final SimulationTimeManager timeManager;
+    private final WeatherSimulator weatherSimulator;
+    private final AutoEventGenerator eventGenerator;
+    private final WeatherTelemetry weatherTelemetry;
+    private final SliceProcessor sliceProcessor;
+    private final StateManager stateManager;
+    private final PlantLogger plantLogger;
+    
+    // Configuration and state
+    private final Path configPath;
+    private final List<SimulationObserver> observers;
+    private boolean initialized;
+    private boolean autoEventsEnabled;
 
-    public GardenSimulationAPI() {
-        this(Paths.get("garden_config.txt"), Paths.get("log.txt"));
+    /**
+     * Get singleton instance with default paths
+     */
+    public static synchronized GardenSimulationAPI getInstance() {
+        if (instance == null) {
+            instance = new GardenSimulationAPI(Paths.get("garden_config.txt"), Paths.get("log.txt"));
+        }
+        return instance;
     }
 
-    public GardenSimulationAPI(Path configPath, Path logPath) {
+    /**
+     * Get singleton instance with custom paths (for testing)
+     */
+    public static synchronized GardenSimulationAPI getInstance(Path configPath, Path logPath) {
+        if (instance == null) {
+            instance = new GardenSimulationAPI(configPath, logPath);
+        }
+        return instance;
+    }
+
+    /**
+     * Private constructor - use getInstance() instead
+     */
+    private GardenSimulationAPI(Path configPath, Path logPath) {
         this.garden = new Garden();
         this.configPath = Objects.requireNonNull(configPath, "configPath");
         this.logger = new GardenLogger(Objects.requireNonNull(logPath, "logPath"));
-        this.observers = new CopyOnWriteArrayList<>();  // thread-safe for observers
-        this.hoursElapsed = new AtomicInteger();
-        this.random = new Random();
-        this.minWaterRequirement = 5;   // defaults until we know actual plant needs
-        this.maxWaterRequirement = 20;
-        this.autoEventConfig = AutoEventConfig.defaultConfig();
+        this.observers = new CopyOnWriteArrayList<>();
+        
+        // Initialize new components
+        this.timeManager = new SimulationTimeManager();
+        this.weatherSimulator = new WeatherSimulator();
+        this.eventGenerator = new AutoEventGenerator(weatherSimulator);
+        this.weatherTelemetry = new WeatherTelemetry();
+        this.stateManager = new StateManager(garden, timeManager, weatherSimulator, weatherTelemetry);
+        this.plantLogger = new PlantLogger(garden, logger);
+        this.sliceProcessor = new SliceProcessor(garden, timeManager, weatherSimulator,
+                                                  eventGenerator, weatherTelemetry, logger);
+        
         this.autoEventsEnabled = true;
-    this.weatherTelemetry = new WeatherTelemetry();
-    this.slicesProcessedThisHour = new AtomicInteger();
+        
         this.moduleManager = ModuleManager.getInstance(garden, logger);
         this.sensorBridge = new SensorBridge(moduleManager, logger);
 
-        // wire up logger so we can push log lines to observers (for UI display)
+        // Wire up logger for observers
         this.logger.addListener(this::fanOutLogEntry);
+    }
+
+    /**
+     * Reset singleton instance - FOR TESTING ONLY
+     * This allows tests to create fresh instances with custom paths
+     */
+    static synchronized void resetInstance() {
+        instance = null;
+    }
+
+    /**
+     * Check if garden has been initialized
+     */
+    public boolean isInitialized() {
+        return initialized;
     }
 
     /**
@@ -98,10 +144,10 @@ public class GardenSimulationAPI {
         }
 
         initialized = true;
-        hoursElapsed.set(0);
-        refreshWaterStats();  // figure out min/max water needs from actual plants
+        timeManager.reset(); // Reset time to hour 0
+        stateManager.refreshWaterStats();  // figure out min/max water needs from actual plants
         logger.log("INIT", "Garden initialized with " + garden.getPlants().size() + " plants");
-        dispatchState(captureState());
+        dispatchState(stateManager.captureState());
     }
 
     /**
@@ -138,12 +184,16 @@ public class GardenSimulationAPI {
      */
     public synchronized void rain(int rainfallAmount) {
         ensureInitialized();
-        int validated = clampRainfall(rainfallAmount);
+        // Use StateManager to get current water requirement range and clamp
+        int minWater = stateManager.getMinWaterRequirement();
+        int maxWater = stateManager.getMaxWaterRequirement();
+        int validated = Math.max(minWater, Math.min(maxWater, rainfallAmount));
+        
         if (validated != rainfallAmount) {
             logger.log("RAIN", "Requested " + rainfallAmount + " units. Clamped to " + validated + ".");
         }
         garden.applyRainfall(validated);
-        weatherTelemetry.recordRain(validated);
+        weatherTelemetry.recordRainfall(validated);
         logger.log("RAIN", "Manual rainfall applied: " + validated + " units");
         refreshAndBroadcastState();
     }
@@ -169,7 +219,9 @@ public class GardenSimulationAPI {
             logger.log("PARASITE", "Ignored parasite event because name was empty");
             return;
         }
-        applyParasiteSilently(cleaned, false);
+        // Apply parasite directly (manual trigger, no limit check)
+        plantLogger.logAffectedPlants(cleaned);
+        garden.triggerParasiteInfestation(cleaned);
         refreshAndBroadcastState();
     }
 
@@ -177,19 +229,26 @@ public class GardenSimulationAPI {
      * Advances the simulation by one hour automatically (timer driven).
      */
     public synchronized void advanceHourAutomatically() {
-        advanceHourWithReason("Timer auto advance");
+        ensureInitialized();
+        // Fill any remaining slices, then close exactly one hour
+        int remaining = timeManager.getRemainingSlices();
+        if (remaining > 0) {
+            processAutoSlices(remaining);
+        }
+        finishHour("Timer auto advance");
     }
 
     /**
      * Advances the simulation by one hour due to user input.
      */
     public synchronized void advanceHourManually() {
-        advanceHourWithReason("Next hour button");
-    }
-
-    private void advanceHourWithReason(String reason) {
         ensureInitialized();
-        closeHour(reason);
+        // Run only the remaining slices for this hour, then close it
+        int remaining = timeManager.getRemainingSlices();
+        if (remaining > 0) {
+            processAutoSlices(remaining);
+        }
+        finishHour("Next hour button");
     }
 
     public synchronized void setAutoEventsEnabled(boolean enabled) {
@@ -201,24 +260,26 @@ public class GardenSimulationAPI {
         return autoEventsEnabled;
     }
 
-    public synchronized void updateAutoEventConfig(AutoEventConfig config) {
+    public synchronized void updateAutoEventConfig(AutoEventGenerator.AutoEventConfig config) {
         if (config != null) {
-            this.autoEventConfig = config;
+            eventGenerator.setConfig(config);
         }
     }
 
     private void refreshAndBroadcastState() {
-        refreshWaterStats();
-        Map<String, Object> snapshot = captureState();
+        stateManager.refreshWaterStats();
+        Map<String, Object> snapshot = stateManager.captureState();
         if (sensorBridge != null) {
-            boolean acted = sensorBridge.evaluateAndAct(snapshot, minWaterRequirement, maxWaterRequirement);
+            boolean acted = sensorBridge.evaluateAndAct(snapshot, 
+                stateManager.getMinWaterRequirement(), 
+                stateManager.getMaxWaterRequirement());
             if (acted) {
-                snapshot = captureState();
+                snapshot = stateManager.captureState();
             }
         } else {
             logger.log("DEBUG", "WARNING: sensorBridge is null!");
         }
-        logPlantAlerts(snapshot);
+        plantLogger.logPlantAlerts(snapshot);
         dispatchState(snapshot);
     }
 
@@ -228,13 +289,13 @@ public class GardenSimulationAPI {
      */
     public synchronized void getState() {
         ensureInitialized();
-        Map<String, Object> snapshot = captureState();
+        Map<String, Object> snapshot = stateManager.captureState();
         
         // Log summary first
-        logger.log("STATE", summarize(snapshot));
+        logger.log("STATE", stateManager.summarize(snapshot));
         
         // Log detailed plant status
-        logDetailedPlantStatus(snapshot);
+        plantLogger.logDetailedPlantStatus(snapshot);
         
         dispatchState(snapshot);
     }
@@ -242,7 +303,7 @@ public class GardenSimulationAPI {
     // extra method for UI - returns state map instead of just logging
     public synchronized Map<String, Object> currentState() {
         ensureInitialized();
-        return captureState();
+        return stateManager.captureState();
     }
 
     public void addObserver(SimulationObserver observer) {
@@ -256,15 +317,15 @@ public class GardenSimulationAPI {
 
     // tells scripts what rainfall range is valid (based on actual plants)
     public int getMinWaterRequirement() {
-        return minWaterRequirement;
+        return stateManager.getMinWaterRequirement();
     }
 
     public int getMaxWaterRequirement() {
-        return maxWaterRequirement;
+        return stateManager.getMaxWaterRequirement();
     }
 
     public int getHoursElapsed() {
-        return hoursElapsed.get();
+        return timeManager.getHoursElapsed();
     }
 
     // populate garden from config file plant definitions
@@ -297,10 +358,9 @@ public class GardenSimulationAPI {
     }
 
     // pushes state update to observers
-    private void closeHour(String reason) {
-        runRemainingSlicesForHour();
-        slicesProcessedThisHour.set(0);
-        int hour = hoursElapsed.incrementAndGet();
+    private void finishHour(String reason) {
+        timeManager.advanceHour();
+        int hour = timeManager.getHoursElapsed();
         
         // Advance day counter every 24 hours
         if (hour % 24 == 0) {
@@ -309,6 +369,56 @@ public class GardenSimulationAPI {
         
         logger.log("HOUR", reason + ". Hour " + hour + " closed.");
         refreshAndBroadcastState();
+    }
+    
+    /**
+     * Process one simulation slice - delegates to SliceProcessor component
+     */
+    private void processSlice() {
+        // Update slice processor with current water requirements from StateManager
+        sliceProcessor.updateWaterRequirements(
+            stateManager.getMinWaterRequirement(), 
+            stateManager.getMaxWaterRequirement()
+        );
+        
+        // Process slice (delegates to component)
+        String eventSummary = autoEventsEnabled 
+            ? sliceProcessor.processSliceWithAutoEvents()
+            : null;
+        
+        if (!autoEventsEnabled) {
+            sliceProcessor.processSliceWithoutAutoEvents();
+        }
+        
+        // Log auto events if any occurred
+        if (eventSummary != null) {
+            logger.log("AUTO", eventSummary);
+        }
+        
+        // Log affected plants if parasite was introduced
+        if (eventSummary != null && eventSummary.contains("pest=")) {
+            String parasite = extractParasiteName(eventSummary);
+            if (parasite != null) {
+                plantLogger.logAffectedPlants(parasite);
+            }
+        }
+        
+        // Check sensors and refresh state
+        refreshAndBroadcastState();
+    }
+    
+    /**
+     * Extract parasite name from event summary string
+     */
+    private String extractParasiteName(String summary) {
+        int pestIdx = summary.indexOf("pest=");
+        if (pestIdx < 0) return null;
+        
+        int start = pestIdx + 5; // "pest=".length()
+        int end = summary.indexOf(' ', start);
+        if (end < 0) end = summary.length();
+        
+        return summary.substring(start, end).trim();
     }
 
     private void dispatchState(Map<String, Object> snapshot) {
@@ -323,274 +433,43 @@ public class GardenSimulationAPI {
             observer.onLogAppended(entry);
         }
     }
-
-    private Map<String, Object> captureState() {
-        Map<String, Object> snapshot = garden.getState();
-        int hourOfDay = getCurrentHourOfDay();
-        boolean night = isNightHour(hourOfDay);
-        snapshot.put("hoursElapsed", hoursElapsed.get());
-        snapshot.put("weather", weatherTelemetry.snapshot(night, hourOfDay));
-        return snapshot;
-    }
-
-    // update rainfall range based on actual plants in garden
-    private void refreshWaterStats() {
-        List<Plant> plants = garden.getPlants();
-        if (plants.isEmpty()) {
-            minWaterRequirement = 5;
-            maxWaterRequirement = 20;
-            return;
-        }
-
-        minWaterRequirement = plants.stream()
-                .mapToInt(Plant::getWaterRequirement)
-                .min()
-                .orElse(5);
-        maxWaterRequirement = plants.stream()
-                .mapToInt(Plant::getWaterRequirement)
-                .max()
-                .orElse(20);
-    }
-
+    
+    /**
+     * Process multiple slices for UI/timer (public API)
+     */
     public synchronized void processAutoSlices(int slices) {
         ensureInitialized();
-        if (slices <= 0) {
-            return;
-        }
-        for (int i = 0; i < slices; i++) {
-            if (slicesProcessedThisHour.get() >= AUTO_SLICES_PER_HOUR) {
+        if (slices <= 0) return;
+        
+        for (int i = 0; i < slices && !timeManager.isHourComplete(); i++) {
+            int processed = timeManager.processSlices(1);
+            if (processed > 0) {
+                processSlice();
+            } else {
                 break;
             }
-            runAutoEventsSlice();
-            slicesProcessedThisHour.incrementAndGet();
         }
     }
 
-    private void runRemainingSlicesForHour() {
-        if (!initialized) {
-            return;
-        }
-    int remaining = AUTO_SLICES_PER_HOUR - slicesProcessedThisHour.get();
-        if (remaining > 0) {
-            processAutoSlices(remaining);
-        }
-    }
-
-    private void runAutoEventsSlice() {
-        if (autoEventConfig == null) {
-            autoEventConfig = AutoEventConfig.defaultConfig();
-        }
-        int hourOfDay = getCurrentHourOfDay();
-        boolean isNight = isNightHour(hourOfDay);
-
-        // Process slice-level plant needs (water consumption, temperature stress)
-        garden.advanceSlice();
-
-        StringBuilder summary = new StringBuilder();
-
-        if (autoEventsEnabled && autoEventConfig.getRainChance() > 0.0 && random.nextDouble() < autoEventConfig.getRainChance()) {
-            int rainAmount = generateRandomRainAmount();
-            int applied = applyRainSilently(rainAmount);
-            if (applied > 0) {
-                summary.append(String.format("rain=%du ", applied));
+    // Process a fixed number of slices, closing hours as boundaries are reached
+    private void processFixedSlices(int slices, String hourCloseReason) {
+        int slicesToRun = Math.max(0, slices);
+        while (slicesToRun > 0) {
+            // If current hour already complete, close it before proceeding
+            if (timeManager.isHourComplete()) {
+                finishHour(hourCloseReason);
             }
-        }
-
-        if (autoEventsEnabled && autoEventConfig.getTemperatureChance() > 0.0 && random.nextDouble() < autoEventConfig.getTemperatureChance()) {
-            int temp = computeDiurnalTemperatureWithVariation();
-            applyTemperatureSilently(temp);
-            summary.append(String.format("temp=%d°F(time) ", temp));
-        }
-
-        if (autoEventsEnabled && autoEventConfig.getParasiteChance() > 0.0 && random.nextDouble() < autoEventConfig.getParasiteChance()) {
-            String parasite = pickRandomParasite();
-            if (!parasite.isEmpty()) {
-                if (applyParasiteSilently(parasite, true)) {
-                    summary.append(String.format("parasite=%s ", parasite));
+            int processed = timeManager.processSlices(1);
+            if (processed > 0) {
+                processSlice();
+                slicesToRun--;
+                if (timeManager.isHourComplete()) {
+                    finishHour(hourCloseReason);
                 }
+            } else {
+                break;
             }
         }
-
-        weatherTelemetry.nudgeClouds(random, isNight);
-        
-        // Always refresh and check sensors after each slice
-        refreshAndBroadcastState();
-        
-        if (summary.length() > 0) {
-            logger.log("AUTO", "Automated slice -> " + summary.toString().trim());
-        }
-    }
-
-    private int generateRandomRainAmount() {
-        int min = Math.max(1, minWaterRequirement);
-        int max = Math.max(min, maxWaterRequirement);
-        return randomBetween(min, max);
-    }
-
-    private int computeDiurnalTemperatureWithVariation() {
-        int base = computeDiurnalTemperature();
-        int jitter = autoEventConfig != null ? autoEventConfig.getTemperatureJitter() : 2;
-        if (jitter > 0) {
-            base += randomBetween(-jitter, jitter);
-        }
-        return Math.max(40, Math.min(120, base));
-    }
-
-    private int computeDiurnalTemperature() {
-        int hourOfDay = getCurrentHourOfDay();
-        int min = Math.max(40, autoEventConfig.getMinTemperature());
-        int max = Math.min(120, autoEventConfig.getMaxTemperature());
-        if (min > max) {
-            int swap = min;
-            min = max;
-            max = swap;
-        }
-
-        double normalizedHour = hourOfDay / 24.0;
-        double sineWave = Math.sin(2 * Math.PI * normalizedHour - Math.PI / 2); // peak at midday
-        double baseNormalized = (sineWave + 1) / 2.0; // map -1..1 to 0..1
-        return (int) Math.round(min + (max - min) * baseNormalized);
-    }
-
-    private int getCurrentHourOfDay() {
-    int totalSlices = hoursElapsed.get() * AUTO_SLICES_PER_HOUR + slicesProcessedThisHour.get();
-        int hour = (totalSlices / AUTO_SLICES_PER_HOUR) % 24;
-        if (hour < 0) {
-            hour += 24;
-        }
-        return hour;
-    }
-
-    private boolean isNightHour(int hourOfDay) {
-        return hourOfDay < 6 || hourOfDay >= 20;
-    }
-
-    private int randomBetween(int min, int max) {
-        if (min >= max) {
-            return min;
-        }
-        return min + random.nextInt((max - min) + 1);
-    }
-
-    private int applyRainSilently(int requested) {
-        int validated = clampRainfall(requested);
-        garden.applyRainfall(validated);
-        weatherTelemetry.recordRain(validated);
-        logger.log("RAIN", "Automated rainfall applied: " + validated + " units");
-        return validated;
-    }
-
-    private void applyTemperatureSilently(int requested) {
-        int clamped = Math.max(40, Math.min(120, requested));
-        garden.applyTemperature(clamped);
-        weatherTelemetry.recordTemperature(clamped);
-    }
-
-    private boolean applyParasiteSilently(String parasiteName, boolean enforceLimit) {
-        String cleaned = sanitizeParasiteName(parasiteName);
-        if (cleaned.isEmpty()) {
-            return false;
-        }
-        if (enforceLimit && !canIntroduceParasite(cleaned)) {
-            logger.log("AUTO", "Skipped parasite event for " + cleaned + " (pest load capped)");
-            return false;
-        }
-        logAffectedPlants(cleaned);
-        garden.triggerParasiteInfestation(cleaned);
-        return true;
-    }
-
-    private boolean canIntroduceParasite(String parasiteName) {
-        List<String> existing = garden.getSoil().getCurrentPests();
-        if (existing.contains(parasiteName)) {
-            return true;
-        }
-        int maxConcurrent = autoEventConfig != null ? autoEventConfig.getMaxConcurrentParasites() : 2;
-        return existing.size() < Math.max(1, maxConcurrent);
-    }
-
-    private String pickRandomParasite() {
-        Set<String> parasites = new HashSet<>();
-        for (Plant plant : garden.getPlants()) {
-            parasites.addAll(plant.getVulnerableParasites());
-        }
-        if (parasites.isEmpty()) {
-            return "";
-        }
-        int index = random.nextInt(parasites.size());
-        int i = 0;
-        for (String parasite : parasites) {
-            if (i == index) {
-                return parasite;
-            }
-            i++;
-        }
-        return "";
-    }
-
-    public static class AutoEventConfig {
-        private final double rainChance;
-        private final double temperatureChance;
-        private final double parasiteChance;
-        private final int minTemperature;
-        private final int maxTemperature;
-        private final int temperatureJitter;
-        private final int maxConcurrentParasites;
-
-        private AutoEventConfig(double rainChance, double temperatureChance, double parasiteChance,
-                                int minTemperature, int maxTemperature,
-                                int temperatureJitter, int maxConcurrentParasites) {
-            this.rainChance = rainChance;
-            this.temperatureChance = temperatureChance;
-            this.parasiteChance = parasiteChance;
-            this.minTemperature = minTemperature;
-            this.maxTemperature = maxTemperature;
-            this.temperatureJitter = temperatureJitter;
-            this.maxConcurrentParasites = maxConcurrentParasites;
-        }
-
-        public static AutoEventConfig defaultConfig() {
-            return new AutoEventConfig(0.35, 0.9, 0.04, 55, 95, 3, 2);
-        }
-
-        public double getRainChance() {
-            return rainChance;
-        }
-
-        public double getTemperatureChance() {
-            return temperatureChance;
-        }
-
-        public double getParasiteChance() {
-            return parasiteChance;
-        }
-
-        public int getMinTemperature() {
-            return minTemperature;
-        }
-
-        public int getMaxTemperature() {
-            return maxTemperature;
-        }
-
-        public int getTemperatureJitter() {
-            return temperatureJitter;
-        }
-
-        public int getMaxConcurrentParasites() {
-            return maxConcurrentParasites;
-        }
-    }
-
-    // clamp rain amount to valid range (per spec: based on plant water needs)
-    private int clampRainfall(int requested) {
-        if (requested < minWaterRequirement) {
-            return minWaterRequirement;
-        }
-        if (requested > maxWaterRequirement) {
-            return maxWaterRequirement;
-        }
-        return requested;
     }
 
     private void ensureInitialized() {
@@ -605,230 +484,5 @@ public class GardenSimulationAPI {
             return "";
         }
         return raw.trim().toLowerCase().replace(" ", "_");
-    }
-
-    // format state snapshot into readable log line
-    private String summarize(Map<String, Object> snapshot) {
-        int day = ((Number) snapshot.getOrDefault("day", 0)).intValue();
-        int alive = ((Number) snapshot.getOrDefault("alivePlants", 0)).intValue();
-        int total = ((Number) snapshot.getOrDefault("totalPlants", 0)).intValue();
-        return "Day " + day + ": " + alive + "/" + total + " plants alive.";
-    }
-    
-    // log detailed status for each plant
-    @SuppressWarnings("unchecked")
-    private void logDetailedPlantStatus(Map<String, Object> snapshot) {
-        List<String> names = (List<String>) snapshot.get("plants");
-        List<String> types = (List<String>) snapshot.get("plantTypes");
-        List<Double> health = (List<Double>) snapshot.get("plantHealth");
-        List<Integer> water = (List<Integer>) snapshot.get("plantWater");
-        List<Integer> waterReq = (List<Integer>) snapshot.get("plantWaterRequirement");
-        List<Boolean> alive = (List<Boolean>) snapshot.get("plantAlive");
-        
-        if (names == null || names.isEmpty()) {
-            return;
-        }
-        
-        for (int i = 0; i < names.size(); i++) {
-            String name = names.get(i);
-            String type = types != null && i < types.size() ? types.get(i) : "Unknown";
-            double healthValue = health != null && i < health.size() ? health.get(i) : 0.0;
-            int waterValue = water != null && i < water.size() ? water.get(i) : 0;
-            int waterReqValue = waterReq != null && i < waterReq.size() ? waterReq.get(i) : 0;
-            boolean isAlive = alive != null && i < alive.size() && alive.get(i);
-            
-            String status = isAlive ? "ALIVE" : "DEAD";
-            String healthStatus = getHealthStatus(healthValue);
-            String waterStatus = getWaterStatus(waterValue, waterReqValue);
-            
-            String detail = String.format("%s (%s) - %s | Health: %.1f%% (%s) | Water: %d/%d (%s)",
-                name, type, status, healthValue, healthStatus, waterValue, waterReqValue, waterStatus);
-            
-            logger.log("PLANT_STATUS", detail);
-        }
-    }
-    
-    // describe health level in human terms
-    private String getHealthStatus(double healthPercent) {
-        if (healthPercent >= 80) return "Healthy";
-        if (healthPercent >= 50) return "Fair";
-        if (healthPercent >= 20) return "Sick";
-        if (healthPercent > 0) return "Dying";
-        return "Dead";
-    }
-    
-    // describe water level in human terms
-    private String getWaterStatus(int currentWater, int requirement) {
-        if (requirement == 0) return "N/A";
-        double ratio = (double) currentWater / requirement;
-        if (ratio >= 1.0) return "Good";
-        if (ratio >= 0.5) return "OK";
-        if (ratio > 0) return "Low";
-        return "Dry";
-    }
-    
-    // log ALERT for plants affected by parasite
-    private void logAffectedPlants(String parasiteName) {
-        List<Plant> allPlants = garden.getPlants();
-        List<Plant> affected = new ArrayList<>();
-        
-        for (Plant plant : allPlants) {
-            if (plant.isAlive() && plant.getVulnerableParasites().contains(parasiteName)) {
-                affected.add(plant);
-            }
-        }
-        
-        if (affected.isEmpty()) {
-            logger.log("PARASITE", "No plants are vulnerable to " + parasiteName);
-            return;
-        }
-        
-        // Log ALERT for each affected plant
-        for (Plant plant : affected) {
-            String alertMsg = String.format("ALERT: %s (%s) under attack by %s | Health: %.1f%%",
-                plant.getName(), plant.getType(), parasiteName, plant.getHealth());
-            logger.log("ALERT", alertMsg);
-        }
-    }
-
-    private static class WeatherTelemetry {
-        private static final long ACTIVE_RAIN_WINDOW_MS = 60_000L;
-        private double cloudCoverFraction = 0.35;
-        private int lastTemperature = 70;
-        private long lastRainTimestampMs = 0L;
-        private int lastRainAmount = 0;
-
-        void recordRain(int amount) {
-            lastRainAmount = amount;
-            lastRainTimestampMs = System.currentTimeMillis();
-            cloudCoverFraction = Math.min(1.0, cloudCoverFraction + 0.2);
-        }
-
-        void recordTemperature(int temperature) {
-            lastTemperature = temperature;
-        }
-
-        void nudgeClouds(Random random, boolean isNight) {
-            double target = isRainActive(System.currentTimeMillis())
-                    ? 0.85
-                    : (isNight ? 0.35 : 0.45 + random.nextDouble() * 0.25);
-            cloudCoverFraction += (target - cloudCoverFraction) * 0.2;
-            cloudCoverFraction = clamp(cloudCoverFraction, 0.05, 1.0);
-        }
-
-        Map<String, Object> snapshot(boolean isNight, int hourOfDay) {
-            long now = System.currentTimeMillis();
-            boolean raining = isRainActive(now);
-            Map<String, Object> weather = new LinkedHashMap<>();
-            double clouds = clamp(cloudCoverFraction, 0.0, 1.0);
-            weather.put("isNight", isNight);
-            weather.put("dayPhase", isNight ? "Night" : "Day");
-            weather.put("hourOfDay", hourOfDay);
-            weather.put("cloudCoverFraction", clouds);
-            weather.put("cloudCoverPct", (int) Math.round(clouds * 100));
-            weather.put("raining", raining);
-            weather.put("activeRainAmount", raining ? lastRainAmount : 0);
-            weather.put("lastRainAmount", lastRainAmount);
-            weather.put("secondsSinceRain", lastRainTimestampMs == 0 ? -1
-                    : (int) Math.max(0, (now - lastRainTimestampMs) / 1000));
-            weather.put("temperature", lastTemperature);
-            weather.put("condition", describeCondition(isNight, raining, clouds));
-            return weather;
-        }
-
-        private boolean isRainActive(long now) {
-            return lastRainTimestampMs > 0 && (now - lastRainTimestampMs) <= ACTIVE_RAIN_WINDOW_MS;
-        }
-
-        private static double clamp(double value, double min, double max) {
-            if (value < min) {
-                return min;
-            }
-            if (value > max) {
-                return max;
-            }
-            return value;
-        }
-
-        private String describeCondition(boolean isNight, boolean raining, double clouds) {
-            if (raining) {
-                if (clouds > 0.75) {
-                    return isNight ? "Heavy Night Rain" : "Steady Rain";
-                }
-                return isNight ? "Passing Showers" : "Light Rain";
-            }
-            if (clouds > 0.85) {
-                return isNight ? "Overcast Night" : "Overcast";
-            }
-            if (clouds > 0.6) {
-                return isNight ? "Mostly Cloudy Night" : "Mostly Cloudy";
-            }
-            if (clouds > 0.4) {
-                return isNight ? "Partly Cloudy Night" : "Partly Cloudy";
-            }
-            return isNight ? "Clear Night" : "Sunny";
-        }
-    }
-    
-    // log ALERT for plants with health or status problems
-    @SuppressWarnings("unchecked")
-    private void logPlantAlerts(Map<String, Object> snapshot) {
-        List<String> names = (List<String>) snapshot.get("plants");
-        List<String> types = (List<String>) snapshot.get("plantTypes");
-        List<Double> health = (List<Double>) snapshot.get("plantHealth");
-        List<Integer> water = (List<Integer>) snapshot.get("plantWater");
-        List<Integer> waterReq = (List<Integer>) snapshot.get("plantWaterRequirement");
-        List<Boolean> alive = (List<Boolean>) snapshot.get("plantAlive");
-        List<Boolean> infested = (List<Boolean>) snapshot.get("plantInfested");
-        
-        if (names == null || names.isEmpty()) {
-            return;
-        }
-        
-        for (int i = 0; i < names.size(); i++) {
-            String name = names.get(i);
-            String type = types != null && i < types.size() ? types.get(i) : "Unknown";
-            double healthValue = health != null && i < health.size() ? health.get(i) : 0.0;
-            int waterValue = water != null && i < water.size() ? water.get(i) : 0;
-            int waterReqValue = waterReq != null && i < waterReq.size() ? waterReq.get(i) : 0;
-            boolean isAlive = alive != null && i < alive.size() && alive.get(i);
-            boolean isInfested = infested != null && i < infested.size() && infested.get(i);
-            
-            // ALERT conditions:
-            // 1. Plant just died (health = 0)
-            // 2. Plant is dying (health < 20% but still alive)
-            // 3. Plant is critically low on water (water < 20% of requirement)
-            // 4. Plant is infested
-            
-            if (!isAlive && healthValue == 0.0) {
-                String alertMsg = String.format("ALERT: %s (%s) has DIED", name, type);
-                logger.log("ALERT", alertMsg);
-            } else if (isAlive) {
-                List<String> problems = new ArrayList<>();
-                
-                if (healthValue < 20.0) {
-                    problems.add(String.format("Health CRITICAL: %.1f%%", healthValue));
-                } else if (healthValue < 50.0) {
-                    problems.add(String.format("Health LOW: %.1f%%", healthValue));
-                }
-                
-                if (waterReqValue > 0) {
-                    double waterRatio = (double) waterValue / waterReqValue;
-                    if (waterRatio < 0.2) {
-                        problems.add(String.format("Water CRITICAL: %d/%d", waterValue, waterReqValue));
-                    }
-                }
-                
-                if (isInfested) {
-                    problems.add("INFESTED by parasites");
-                }
-                
-                if (!problems.isEmpty()) {
-                    String alertMsg = String.format("ALERT: %s (%s) - %s", 
-                        name, type, String.join(" | ", problems));
-                    logger.log("ALERT", alertMsg);
-                }
-            }
-        }
     }
 }

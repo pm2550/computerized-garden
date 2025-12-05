@@ -5,6 +5,8 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import edu.scu.csen275.group5.PrimaryController;
+import edu.scu.csen275.group5.SecondaryController;
 
 import java.io.IOException;
 
@@ -14,10 +16,14 @@ import java.io.IOException;
 public class App extends Application {
 
     private static Scene scene;
+    private static Parent primaryRoot;
+    private static Parent secondaryRoot;
+    private static PrimaryController primaryController;
+    private static SecondaryController secondaryController;
 
     @Override
     public void start(Stage stage) throws IOException {
-        scene = new Scene(loadFXML("primary"), 1100, 720);
+        scene = new Scene(loadPrimary(), 1100, 720);
         scene.getStylesheets().add(App.class.getResource("app.css").toExternalForm());
         stage.setTitle("Computerized Garden Control Room");
         stage.setScene(scene);
@@ -27,7 +33,33 @@ public class App extends Application {
     }
 
     static void setRoot(String fxml) throws IOException {
-        scene.setRoot(loadFXML(fxml));
+        if ("primary".equals(fxml)) {
+            scene.setRoot(loadPrimary());
+        } else if ("secondary".equals(fxml)) {
+            scene.setRoot(loadSecondary());
+        } else {
+            scene.setRoot(loadFXML(fxml));
+        }
+    }
+
+    private static Parent loadPrimary() throws IOException {
+        if (primaryRoot == null) {
+            FXMLLoader fxmlLoader = new FXMLLoader(App.class.getResource("primary.fxml"));
+            Parent root = fxmlLoader.load();
+            primaryController = fxmlLoader.getController();
+            primaryRoot = root;
+        }
+        return primaryRoot;
+    }
+
+    private static Parent loadSecondary() throws IOException {
+        if (secondaryRoot == null) {
+            FXMLLoader fxmlLoader = new FXMLLoader(App.class.getResource("secondary.fxml"));
+            Parent root = fxmlLoader.load();
+            secondaryController = fxmlLoader.getController();
+            secondaryRoot = root;
+        }
+        return secondaryRoot;
     }
 
     private static Parent loadFXML(String fxml) throws IOException {
