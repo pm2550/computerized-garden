@@ -344,9 +344,9 @@ public class GardenSimulationAPI {
 
         if (autoEventConfig.getTemperatureChance() > 0.0) {
             if (random.nextDouble() < autoEventConfig.getTemperatureChance()) {
-                int temp = generateRandomTemperature();
+                int temp = computeDiurnalTemperature();
                 applyTemperatureSilently(temp);
-                summary.append(String.format("temp=%d°F ", temp));
+                summary.append(String.format("temp=%d°F(time)", temp)).append(' ');
             }
         }
 
@@ -372,7 +372,8 @@ public class GardenSimulationAPI {
         return randomBetween(min, max);
     }
 
-    private int generateRandomTemperature() {
+    private int computeDiurnalTemperature() {
+        int hourOfDay = getCurrentHourOfDay();
         int min = Math.max(40, autoEventConfig.getMinTemperature());
         int max = Math.min(120, autoEventConfig.getMaxTemperature());
         if (min > max) {
@@ -380,7 +381,26 @@ public class GardenSimulationAPI {
             min = max;
             max = swap;
         }
-        return randomBetween(min, max);
+
+        double progress;
+        if (hourOfDay <= 12) {
+            progress = hourOfDay / 12.0; // sunrise to noon warming
+            progress = Math.min(1.0, Math.max(0.0, progress));
+            return (int) Math.round(min + (max - min) * progress);
+        } else {
+            progress = (hourOfDay - 12) / 12.0; // afternoon cooling
+            progress = Math.min(1.0, Math.max(0.0, progress));
+            return (int) Math.round(max - (max - min) * progress);
+        }
+    }
+
+    private int getCurrentHourOfDay() {
+        int totalHours = hoursElapsed.get();
+        int hour = totalHours % 24;
+        if (hour < 0) {
+            hour += 24;
+        }
+        return hour;
     }
 
     private int randomBetween(int min, int max) {

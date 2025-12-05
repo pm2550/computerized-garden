@@ -528,7 +528,7 @@ public class PrimaryController {
         remainder %= 3600;
         long minutes = remainder / 60;
         long seconds = remainder % 60;
-        clockLabel.setText(String.format("Elapsed  |  %dd %02dh %02dm %02ds", days, hours, minutes, seconds));
+        clockLabel.setText(String.format("Current Time | Day %d  %02d:%02d:%02d", days, hours, minutes, seconds));
     }
 
     private String formatSpeedLabel() {
