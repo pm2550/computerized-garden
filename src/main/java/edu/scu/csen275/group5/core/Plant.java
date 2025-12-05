@@ -123,10 +123,28 @@ public class Plant {
 
         // Check if within optimal range
         if (temperature >= optimalTempMin && temperature <= optimalTempMax) {
-            changeHealth(0.014);  // +2/day = +0.014/slice
+            // Optimal temperature AND good water = faster health recovery
+            double waterRatio = (double) currentWater / waterRequirement;
+            if (waterRatio >= 1.0) {
+                changeHealth(0.07);  // +10/day when both temp and water are optimal
+            } else if (waterRatio >= 0.75) {
+                changeHealth(0.035);  // +5/day when temp optimal, water OK
+            } else {
+                changeHealth(0.014);  // +2/day = +0.014/slice (original)
+            }
         } else {
             // Outside optimal but within tolerance
-            changeHealth(-0.035);  // -5/day = -0.035/slice
+            double waterRatio = (double) currentWater / waterRequirement;
+            if (waterRatio >= 1.05) {
+                // Good water can compensate for suboptimal temperature
+                changeHealth(0.035);  // +5/day when water is excellent
+            } else if (waterRatio >= 0.9) {
+                // Decent water = slow recovery even with suboptimal temp
+                changeHealth(0.007);  // +1/day = +0.007/slice
+            } else {
+                // Low water + suboptimal temp = decline
+                changeHealth(-0.035);  // -5/day = -0.035/slice
+            }
         }
     }
 
@@ -140,7 +158,7 @@ public class Plant {
         }
         if (vulnerableParasites.contains(parasiteName)) {
             this.infested = true;
-            changeHealth(-25);  // Parasite causes significant health loss
+            changeHealth(-3);  // Parasite causes moderate damage per infection (reduced from -25)
         }
     }
 
@@ -150,7 +168,7 @@ public class Plant {
     public void treatParasite() {
         if (this.infested) {
             this.infested = false;
-            changeHealth(-10);  // Treatment also damages plant slightly
+            changeHealth(-1);  // Treatment causes minimal damage (reduced from -10)
         }
     }
 

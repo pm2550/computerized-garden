@@ -20,7 +20,6 @@ public class SensorBridge {
     private static final int TEMP_LOW_THRESHOLD_F = 52;
     private static final int TEMP_RECOVERY_THRESHOLD_F = 60;
     private static final int TEMP_TARGET_F = 65;
-    private static final long PEST_SWEEP_COOLDOWN_MS = 30_000L;
     private static final String IRRIGATION = "irrigation";
     private static final String HEATING = "heating";
     private static final String PEST_CONTROL = "pest_control";
@@ -30,7 +29,6 @@ public class SensorBridge {
     private boolean irrigationAutoActive;
     private boolean heatingAutoActive;
     private boolean pestControlAutoActive;
-    private long lastPestSweepMs;
 
     public SensorBridge(ModuleManager modules, GardenLogger logger) {
         this.modules = modules;
@@ -158,21 +156,21 @@ public class SensorBridge {
         List<String> pests = soil != null
                 ? (List<String>) soil.getOrDefault("pests", Collections.emptyList())
                 : Collections.emptyList();
-        long now = System.currentTimeMillis();
+        
         if (pests != null && !pests.isEmpty()) {
             modules.activateModule(PEST_CONTROL);
             pestControlAutoActive = true;
-            if (now - lastPestSweepMs >= PEST_SWEEP_COOLDOWN_MS) {
-                for (String pest : pests) {
-                    if (pest != null && !pest.isBlank()) {
-                        modules.handleParasite(pest);
-                    }
+            
+            // No cooldown - treat pests immediately every slice when detected
+            for (String pest : pests) {
+                if (pest != null && !pest.isBlank()) {
+                    modules.handleParasite(pest);
                 }
-                lastPestSweepMs = now;
-                logger.log("SENSOR", "Detected pests → automated treatment for " + String.join(", ", pests));
-                return true;
             }
-        } else if (pestControlAutoActive && now - lastPestSweepMs >= PEST_SWEEP_COOLDOWN_MS) {
+            logger.log("SENSOR", "Detected pests → automated treatment for " + String.join(", ", pests));
+            return true;
+        } else if (pestControlAutoActive) {
+            // Pests cleared - deactivate pest control
             modules.deactivateModule(PEST_CONTROL);
             pestControlAutoActive = false;
             logger.log("SENSOR", "Pest sensors clear → pest control idle");

@@ -206,16 +206,19 @@ public class Garden {
      * @param parasiteName name of the parasite to treat
      */
     public void treatParasite(String parasiteName) {
+        System.out.println("DEBUG: treatParasite called for: " + parasiteName);
         soil.removePest(parasiteName);
         
         int treatedPlants = 0;
         for (Plant plant : plants) {
             if (plant.isAlive() && plant.isInfested() && 
                 plant.getVulnerableParasites().contains(parasiteName)) {
+                System.out.println("DEBUG: Treating plant " + plant.getName() + " for " + parasiteName);
                 plant.treatParasite();
                 treatedPlants++;
             }
         }
+        System.out.println("DEBUG: Total treated plants: " + treatedPlants);
 
         recordEvent("TREATMENT", "Treated parasite '" + parasiteName + "': " + 
                    treatedPlants + " plant(s) treated");
