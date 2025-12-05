@@ -3,6 +3,7 @@ package edu.scu.csen275.group5.control;
 import edu.scu.csen275.group5.core.Garden;
 import edu.scu.csen275.group5.core.GardenConfig;
 import edu.scu.csen275.group5.core.Plant;
+import edu.scu.csen275.group5.modules.ModuleManager;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,6 +48,8 @@ public class GardenSimulationAPI {
     private AutoEventConfig autoEventConfig;
     private final WeatherTelemetry weatherTelemetry;
     private final AtomicInteger slicesProcessedThisHour;
+    private final ModuleManager moduleManager;
+    private final SensorBridge sensorBridge;
 
     public GardenSimulationAPI() {
         this(Paths.get("garden_config.txt"), Paths.get("log.txt"));
@@ -65,6 +68,8 @@ public class GardenSimulationAPI {
         this.autoEventsEnabled = true;
     this.weatherTelemetry = new WeatherTelemetry();
     this.slicesProcessedThisHour = new AtomicInteger();
+        this.moduleManager = ModuleManager.getInstance(garden, logger);
+        this.sensorBridge = new SensorBridge(moduleManager, logger);
 
         // wire up logger so we can push log lines to observers (for UI display)
         this.logger.addListener(this::fanOutLogEntry);
@@ -205,6 +210,9 @@ public class GardenSimulationAPI {
     private void refreshAndBroadcastState() {
         refreshWaterStats();
         Map<String, Object> snapshot = captureState();
+        if (sensorBridge != null && sensorBridge.evaluateAndAct(snapshot, minWaterRequirement, maxWaterRequirement)) {
+            snapshot = captureState();
+        }
         logPlantAlerts(snapshot);
         dispatchState(snapshot);
     }
@@ -745,6 +753,141 @@ public class GardenSimulationAPI {
                 return isNight ? "Partly Cloudy Night" : "Partly Cloudy";
             }
             return isNight ? "Clear Night" : "Sunny";
+        }
+    }
+
+    private static class SensorBridge {
+        private static final double MOISTURE_LOW_THRESHOLD = 25.0;
+        private static final double MOISTURE_RECOVERY_THRESHOLD = 45.0;
+        private static final int TEMP_LOW_THRESHOLD_F = 52;
+        private static final int TEMP_RECOVERY_THRESHOLD_F = 60;
+        private static final int TEMP_TARGET_F = 65;
+        private static final long PEST_SWEEP_COOLDOWN_MS = 30_000L;
+        private static final String IRRIGATION = "irrigation";
+        private static final String HEATING = "heating";
+        private static final String PEST_CONTROL = "pest_control";
+
+        private final ModuleManager modules;
+        private final GardenLogger logger;
+        private boolean irrigationAutoActive;
+        private boolean heatingAutoActive;
+        private boolean pestControlAutoActive;
+        private long lastPestSweepMs;
+
+        SensorBridge(ModuleManager modules, GardenLogger logger) {
+            this.modules = modules;
+            this.logger = logger;
+        }
+
+        boolean evaluateAndAct(Map<String, Object> snapshot, int minRain, int maxRain) {
+            boolean acted = false;
+            acted |= manageIrrigation(snapshot, minRain, maxRain);
+            acted |= manageHeating(snapshot);
+            acted |= managePests(snapshot);
+            return acted;
+        }
+
+        private boolean manageIrrigation(Map<String, Object> snapshot, int minRain, int maxRain) {
+            Map<String, Object> soil = soil(snapshot);
+            double moisture = soil != null ? asDouble(soil.get("moisture"), Double.NaN) : Double.NaN;
+            if (Double.isNaN(moisture)) {
+                return false;
+            }
+            if (moisture < MOISTURE_LOW_THRESHOLD) {
+                modules.activateModule(IRRIGATION);
+                irrigationAutoActive = true;
+                int intensity = clamp((int) Math.round((MOISTURE_LOW_THRESHOLD - moisture) * 4) + 35, 35, 100);
+                modules.setModuleIntensity(IRRIGATION, intensity);
+                int rainPulse = Math.max(minRain, (int) Math.round(maxRain * 0.8));
+                modules.handleRainfall(rainPulse);
+                logger.log("SENSOR", String.format("Soil moisture %.1f%% low → irrigation pulse (%du @%d%%)",
+                        moisture, rainPulse, intensity));
+                return true;
+            }
+            if (irrigationAutoActive && moisture >= MOISTURE_RECOVERY_THRESHOLD) {
+                modules.deactivateModule(IRRIGATION);
+                irrigationAutoActive = false;
+                logger.log("SENSOR", String.format("Soil moisture recovered to %.1f%% → irrigation idle", moisture));
+            }
+            return false;
+        }
+
+        private boolean manageHeating(Map<String, Object> snapshot) {
+            double temperature = asDouble(snapshot.get("temperature"), Double.NaN);
+            if (Double.isNaN(temperature)) {
+                return false;
+            }
+            if (temperature < TEMP_LOW_THRESHOLD_F) {
+                modules.activateModule(HEATING);
+                heatingAutoActive = true;
+                int intensity = clamp((int) Math.round((TEMP_LOW_THRESHOLD_F - temperature) * 6) + 40, 40, 100);
+                modules.setModuleIntensity(HEATING, intensity);
+                int target = Math.max(TEMP_TARGET_F, (int) Math.round(temperature + 5));
+                modules.handleTemperatureChange(target);
+                logger.log("SENSOR", String.format("Air temp %.0f°F low → heating target %d°F @%d%%",
+                        temperature, target, intensity));
+                return true;
+            }
+            if (heatingAutoActive && temperature >= TEMP_RECOVERY_THRESHOLD_F) {
+                modules.deactivateModule(HEATING);
+                heatingAutoActive = false;
+                logger.log("SENSOR", String.format("Air temp stabilized at %.0f°F → heating idle", temperature));
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private boolean managePests(Map<String, Object> snapshot) {
+            Map<String, Object> soil = soil(snapshot);
+            List<String> pests = soil != null
+                    ? (List<String>) soil.getOrDefault("pests", Collections.emptyList())
+                    : Collections.emptyList();
+            long now = System.currentTimeMillis();
+            if (pests != null && !pests.isEmpty()) {
+                modules.activateModule(PEST_CONTROL);
+                pestControlAutoActive = true;
+                if (now - lastPestSweepMs >= PEST_SWEEP_COOLDOWN_MS) {
+                    for (String pest : pests) {
+                        if (pest != null && !pest.isBlank()) {
+                            modules.handleParasite(pest);
+                        }
+                    }
+                    lastPestSweepMs = now;
+                    logger.log("SENSOR", "Detected pests → automated treatment for " + String.join(", ", pests));
+                    return true;
+                }
+            } else if (pestControlAutoActive && now - lastPestSweepMs >= PEST_SWEEP_COOLDOWN_MS) {
+                modules.deactivateModule(PEST_CONTROL);
+                pestControlAutoActive = false;
+                logger.log("SENSOR", "Pest sensors clear → pest control idle");
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> soil(Map<String, Object> snapshot) {
+            Object soil = snapshot.get("soil");
+            if (soil instanceof Map<?, ?>) {
+                return (Map<String, Object>) soil;
+            }
+            return null;
+        }
+
+        private static int clamp(int value, int min, int max) {
+            if (value < min) {
+                return min;
+            }
+            if (value > max) {
+                return max;
+            }
+            return value;
+        }
+
+        private static double asDouble(Object value, double fallback) {
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            }
+            return fallback;
         }
     }
     

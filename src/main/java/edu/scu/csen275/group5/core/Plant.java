@@ -172,14 +172,17 @@ public class Plant {
         if (!alive) {
             return;
         }
-        this.health += delta;
-        if (this.health > 100) {
-            this.health = 100;
+        if (delta > 0 && this.health >= 100) {
+            return;
         }
-        if (this.health <= 0) {
-            this.health = 0;
-            this.alive = false;
+        double next = this.health + delta;
+        if (next > 100) {
+            next = 100;
+        } else if (next < 0) {
+            next = 0;
         }
+        this.health = next;
+        this.alive = this.health > 0;
     }
 
     @Override
