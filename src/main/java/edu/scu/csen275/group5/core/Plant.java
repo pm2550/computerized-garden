@@ -126,21 +126,21 @@ public class Plant {
             // Optimal temperature AND good water = faster health recovery
             double waterRatio = (double) currentWater / waterRequirement;
             if (waterRatio >= 1.0) {
-                changeHealth(0.07);  // +10/day when both temp and water are optimal
+                changeHealth(0.35);  // +50%/day when both temp and water are optimal (5x faster!)
             } else if (waterRatio >= 0.75) {
-                changeHealth(0.035);  // +5/day when temp optimal, water OK
+                changeHealth(0.14);  // +20%/day when temp optimal, water OK
             } else {
-                changeHealth(0.014);  // +2/day = +0.014/slice (original)
+                changeHealth(0.07);  // +10/day (2x faster than before)
             }
         } else {
             // Outside optimal but within tolerance
             double waterRatio = (double) currentWater / waterRequirement;
             if (waterRatio >= 1.05) {
                 // Good water can compensate for suboptimal temperature
-                changeHealth(0.035);  // +5/day when water is excellent
+                changeHealth(0.14);  // +20%/day when water is excellent (4x faster)
             } else if (waterRatio >= 0.9) {
                 // Decent water = slow recovery even with suboptimal temp
-                changeHealth(0.007);  // +1/day = +0.007/slice
+                changeHealth(0.035);  // +5/day (5x faster)
             } else {
                 // Low water + suboptimal temp = decline
                 changeHealth(-0.035);  // -5/day = -0.035/slice
