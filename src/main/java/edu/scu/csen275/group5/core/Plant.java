@@ -16,6 +16,7 @@ public class Plant {
     private double health;  // 0.0 to 100.0, represents plant health percentage
     private int age;  // days since planting
     private boolean alive;
+    private double waterAccumulator;  // accumulates fractional water consumption
     private int daysSinceWatering;  // tracks consecutive days without water
     private boolean infested;  // whether plant is currently infested
 
@@ -37,7 +38,9 @@ public class Plant {
         this.age = 0;
         this.alive = true;
         this.daysSinceWatering = 0;
+        this.waterAccumulator = 0.0;
         this.infested = false;
+        System.out.println("DEBUG: Created " + name + " with waterReq=" + waterRequirement + ", currentWater=" + currentWater);
         this.optimalTempMin = optimalTempMin;
         this.optimalTempMax = optimalTempMax;
         this.minTempTolerance = minTempTolerance;
@@ -54,6 +57,7 @@ public class Plant {
         }
         this.currentWater += waterAmount;
         this.daysSinceWatering = 0;  // Reset the counter
+        this.waterAccumulator = 0.0;  // Reset fractional accumulator
         // Cap the water at 1.5x requirement to prevent over-watering damage
         if (this.currentWater > waterRequirement * 1.5) {
             changeHealth(-5);  // Over-watering damage
@@ -62,48 +66,67 @@ public class Plant {
     }
 
     /**
-     * Simulate one day's water consumption
+     * Simulate one slice's water consumption (called every 10 simulated minutes)
+     * 1 day = 144 slices (24 hours * 6 slices/hour)
      */
-    public void consumeWater() {
+    public void consumeWaterPerSlice() {
         if (!alive) {
             return;
         }
-        this.currentWater -= this.waterRequirement;
-        if (this.currentWater < 0) {
-            this.daysSinceWatering++;
-            this.currentWater = 0;
+        // Accumulate fractional water consumption to avoid rounding errors
+        double sliceConsumption = this.waterRequirement / 144.0;
+        waterAccumulator += sliceConsumption;
+        
+        // Only deduct full units of water
+        if (waterAccumulator >= 1.0) {
+            int toConsume = (int) waterAccumulator;
+            this.currentWater -= toConsume;
+            waterAccumulator -= toConsume;
             
-            // Health decreases if plant is not watered
-            if (this.daysSinceWatering == 1) {
-                changeHealth(-10);
-            } else if (this.daysSinceWatering == 2) {
-                changeHealth(-20);
-            } else if (this.daysSinceWatering >= 3) {
-                changeHealth(-30);  // Rapid health decline after 3 days
+            if (this.currentWater < 0) {
+                this.currentWater = 0;
             }
         }
+        
+        // Check water ratio and apply stress
+        double waterRatio = this.waterRequirement > 0 
+            ? (double) this.currentWater / this.waterRequirement 
+            : 1.0;
+            
+        if (waterRatio < 0.1) {
+            // Severely dehydrated - rapid health loss
+            changeHealth(-0.21);  // -30/day = -0.21/slice
+        } else if (waterRatio < 0.3) {
+            // Low water - moderate health loss
+            changeHealth(-0.14);  // -20/day = -0.14/slice
+        } else if (waterRatio < 0.5) {
+            // Slightly low - mild stress
+            changeHealth(-0.07);  // -10/day = -0.07/slice
+        }
+        // Above 50% water ratio = no stress
     }
 
     /**
-     * Apply temperature stress to the plant
+     * Apply temperature stress to the plant (called per slice, so effects are scaled down)
      * @param temperature current temperature in Fahrenheit
      */
     public void applyTemperatureStress(int temperature) {
         if (!alive) {
             return;
         }
+        // Temperature effects are scaled for per-slice checks (1/144th of daily impact)
         // Check if temperature is within tolerance range
         if (temperature < minTempTolerance || temperature > maxTempTolerance) {
-            changeHealth(-15);  // Severe damage outside tolerance
+            changeHealth(-0.104);  // -15/day = -0.104/slice
             return;
         }
 
         // Check if within optimal range
         if (temperature >= optimalTempMin && temperature <= optimalTempMax) {
-            changeHealth(2);  // Slight health recovery in optimal conditions
+            changeHealth(0.014);  // +2/day = +0.014/slice
         } else {
             // Outside optimal but within tolerance
-            changeHealth(-5);
+            changeHealth(-0.035);  // -5/day = -0.035/slice
         }
     }
 
@@ -132,17 +155,23 @@ public class Plant {
     }
 
     /**
-     * Advance one day in the simulation
+     * Advance plant age by one day (called every 24 simulated hours = 144 slices)
      */
     public void advanceDay() {
         if (!alive) {
             return;
         }
         this.age++;
-        this.consumeWater();
-        if (this.health > 100) {
-            this.health = 100;
+    }
+    
+    /**
+     * Process one simulation slice (10 minutes) for this plant
+     */
+    public void advanceSlice() {
+        if (!alive) {
+            return;
         }
+        consumeWaterPerSlice();
     }
 
     // Getters and Setters

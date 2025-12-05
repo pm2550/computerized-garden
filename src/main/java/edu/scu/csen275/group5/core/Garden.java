@@ -142,15 +142,8 @@ public class Garden {
     public void applyRainfall(int rainfallAmount) {
         soil.addWater(rainfallAmount);
         
-        // Distribute water to plants
-        if (!plants.isEmpty()) {
-            int waterPerPlant = rainfallAmount / plants.size();
-            for (Plant plant : plants) {
-                if (plant.isAlive()) {
-                    plant.addWater(waterPerPlant);
-                }
-            }
-        }
+        // Rainfall only goes to soil, not directly to plants
+        // Plants will absorb water from soil as needed
         
         recordEvent("RAIN", "Rainfall applied: " + rainfallAmount + " units. Soil moisture: " + 
                    String.format("%.1f%%", soil.getMoisture()));
@@ -229,23 +222,53 @@ public class Garden {
     }
 
     /**
-     * Advance the simulation by one day
-     * Each hour = one simulated day
+     * Advance the simulation by one full day (24 simulated hours = 144 slices)
      */
     public void advanceDay() {
         simulationDay++;
         
-        // Advance each plant
+        // Advance each plant's age
         for (Plant plant : plants) {
             if (plant.isAlive()) {
                 plant.advanceDay();
             }
         }
 
-        // Advance soil
+        // Advance soil (daily processes like evaporation)
         soil.advanceDay();
 
         recordEvent("DAY_ADVANCE", "Day " + simulationDay + " completed");
+    }
+    
+    /**
+     * Advance the simulation by one slice (10 simulated minutes)
+     */
+    public void advanceSlice() {
+        // Process slice plant needs (water consumption, etc.)
+        for (Plant plant : plants) {
+            if (plant.isAlive()) {
+                plant.advanceSlice();
+                
+                // Let plant absorb water from soil if needed
+                int currentWater = plant.getCurrentWater();
+                int waterReq = plant.getWaterRequirement();
+                if (currentWater < waterReq && soil.getMoisture() > 10.0) {
+                    // Plant needs water and soil has some moisture
+                    int needed = waterReq - currentWater;
+                    // Each plant can absorb a small amount per slice based on soil moisture
+                    // Higher moisture = easier absorption
+                    double absorptionRate = Math.min(1.0, soil.getMoisture() / 50.0); // 0.2-1.0
+                    int canAbsorb = Math.max(1, (int)(absorptionRate * 2)); // 1-2 units per slice
+                    int absorbed = Math.min(canAbsorb, needed);
+                    
+                    if (absorbed > 0) {
+                        plant.addWater(absorbed);
+                        // Remove absorbed water from soil (spread across all plants)
+                        soil.addWater(-absorbed * 0.5); // Each plant takes less from soil % than they get
+                    }
+                }
+            }
+        }
     }
 
     /**
