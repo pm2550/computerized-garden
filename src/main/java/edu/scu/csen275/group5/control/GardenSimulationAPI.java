@@ -243,12 +243,17 @@ public class GardenSimulationAPI {
      */
     public synchronized void advanceHourManually() {
         ensureInitialized();
-        // Run only the remaining slices for this hour, then close it
+        // Add exactly one hour, preserving current intra-hour offset:
+        // 1) record current progress, 2) finish current hour, 3) reapply offset into new hour
+        int slicesDoneThisHour = timeManager.getSlicesProcessedThisHour();
         int remaining = timeManager.getRemainingSlices();
         if (remaining > 0) {
             processAutoSlices(remaining);
         }
         finishHour("Next hour button");
+        if (slicesDoneThisHour > 0 && slicesDoneThisHour < SimulationTimeManager.getSlicesPerHour()) {
+            processAutoSlices(slicesDoneThisHour);
+        }
     }
 
     public synchronized void setAutoEventsEnabled(boolean enabled) {
@@ -445,27 +450,6 @@ public class GardenSimulationAPI {
             int processed = timeManager.processSlices(1);
             if (processed > 0) {
                 processSlice();
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Process a fixed number of slices, closing hours as boundaries are reached
-    private void processFixedSlices(int slices, String hourCloseReason) {
-        int slicesToRun = Math.max(0, slices);
-        while (slicesToRun > 0) {
-            // If current hour already complete, close it before proceeding
-            if (timeManager.isHourComplete()) {
-                finishHour(hourCloseReason);
-            }
-            int processed = timeManager.processSlices(1);
-            if (processed > 0) {
-                processSlice();
-                slicesToRun--;
-                if (timeManager.isHourComplete()) {
-                    finishHour(hourCloseReason);
-                }
             } else {
                 break;
             }

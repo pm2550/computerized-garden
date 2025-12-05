@@ -123,9 +123,6 @@ public class PrimaryController {
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
     private final GardenSimulationAPI api = GardenSimulationAPI.getInstance();
     private Boolean gardenShowingNight = null;
-    
-    // Static observer to prevent duplicates across scene switches
-    private static GardenSimulationAPI.SimulationObserver sharedObserver;
 
     private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
     private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
@@ -139,6 +136,9 @@ public class PrimaryController {
     private String lastSpeedSelection = "1x";
     private boolean suppressSpeedSelectionUpdate = false;
     private int autoSlicesCompletedThisHour = 0;
+    private boolean manualAdvanceKeepOffset = false;
+    private double preservedRemainingSeconds = 0.0;
+    private int preservedAutoSlices = 0;
 
     @FXML
     public void initialize() {
@@ -150,17 +150,6 @@ public class PrimaryController {
         hookObservers();
         hydrateLogTail();
         setGardenBackground(false);  // set the background image
-        
-        // If garden is already initialized (scene switch), disable init button and update UI
-        if (api.isInitialized()) {
-            initButton.setDisable(true);
-            applyState(api.currentState());
-            summaryLabel.setText("Garden online — ready for events");
-            // Restart timer if it was running
-            if (timerActive) {
-                startHourTimer();
-            }
-        }
     }
     
     // sets the garden background image
@@ -265,11 +254,19 @@ public class PrimaryController {
     @FXML
     private void handleNextHour() {
         try {
-            completePendingAutoSlices();
+            preservedRemainingSeconds = remainingSeconds;
+            preservedAutoSlices = autoSlicesCompletedThisHour;
+            manualAdvanceKeepOffset = true;
             api.advanceHourManually();
-            resetTimerCountdown();
+            lastTickNanos = 0L;
+            updateTimerLabel();
         } catch (Exception ex) {
             appendLog("Next hour failed: " + ex.getMessage());
+        } finally {
+            if (!manualAdvanceKeepOffset) {
+                preservedRemainingSeconds = 0.0;
+                preservedAutoSlices = 0;
+            }
         }
     }
 
@@ -335,20 +332,17 @@ public class PrimaryController {
     }
 
     private void hookObservers() {
-        if (sharedObserver == null) {
-            sharedObserver = new GardenSimulationAPI.SimulationObserver() {
-                @Override
-                public void onStateChanged(Map<String, Object> stateSnapshot) {
-                    Platform.runLater(() -> applyState(stateSnapshot));
-                }
+        api.addObserver(new GardenSimulationAPI.SimulationObserver() {
+            @Override
+            public void onStateChanged(Map<String, Object> stateSnapshot) {
+                Platform.runLater(() -> applyState(stateSnapshot));
+            }
 
-                @Override
-                public void onLogAppended(String logEntry) {
-                    Platform.runLater(() -> appendLog(logEntry));
-                }
-            };
-            api.addObserver(sharedObserver);
-        }
+            @Override
+            public void onLogAppended(String logEntry) {
+                Platform.runLater(() -> appendLog(logEntry));
+            }
+        });
     }
 
     private void configureTable() {
@@ -547,8 +541,14 @@ public class PrimaryController {
         if (!timerActive) {
             return;
         }
-        autoSlicesCompletedThisHour = 0;
-        remainingSeconds = getHourDurationSeconds();
+        if (manualAdvanceKeepOffset) {
+            remainingSeconds = preservedRemainingSeconds;
+            autoSlicesCompletedThisHour = preservedAutoSlices;
+            manualAdvanceKeepOffset = false;
+        } else {
+            autoSlicesCompletedThisHour = 0;
+            remainingSeconds = getHourDurationSeconds();
+        }
         updateTimerLabel();
     }
 
