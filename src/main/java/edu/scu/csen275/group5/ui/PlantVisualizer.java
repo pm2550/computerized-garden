@@ -24,7 +24,8 @@ public class PlantVisualizer {
      * Shows: colored background (health), plant symbol, name, and status.
      */
     public static StackPane createPlantTile(String name, String type, double healthPercent, 
-                                             int currentWater, int waterRequirement, boolean alive) {
+                                             int currentWater, int waterRequirement, int ageDays,
+                                             boolean alive) {
         StackPane tile = new StackPane();
         tile.setPrefSize(TILE_SIZE, TILE_SIZE);
         tile.setMaxSize(TILE_SIZE, TILE_SIZE);
@@ -58,9 +59,10 @@ public class PlantVisualizer {
         String waterStatus = getWaterStatus(currentWater, waterRequirement);
         String healthStatus = getHealthStatus(healthPercent);
         String tooltipText = String.format(
-            "%s (%s)\nHealth: %.0f%% - %s\nWater: %d/%d - %s\nStatus: %s",
+            "%s (%s)\nHealth: %.0f%% - %s\nWater: %d/%d - %s\nAge: %d day%s\nStatus: %s",
             name, type, healthPercent, healthStatus, 
             currentWater, waterRequirement, waterStatus,
+            Math.max(0, ageDays), ageDays == 1 ? "" : "s",
             alive ? "Alive" : "Dead"
         );
         Tooltip tooltip = new Tooltip(tooltipText);

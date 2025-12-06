@@ -53,6 +53,7 @@
                   <TableColumn fx:id="typeColumn" text="Type" prefWidth="80"/>
                   <TableColumn fx:id="healthColumn" text="Health %" prefWidth="80"/>
                   <TableColumn fx:id="statusColumn" text="Status" prefWidth="80"/>
+                  <TableColumn fx:id="ageColumn" text="Age (days)" prefWidth="90"/>
                </columns>
             </TableView>
             

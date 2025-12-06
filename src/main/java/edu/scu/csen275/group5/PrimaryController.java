@@ -71,6 +71,9 @@ public class PrimaryController {
     private TableColumn<PlantStatusRow, String> typeColumn;
 
     @FXML
+    private TableColumn<PlantStatusRow, String> ageColumn;
+
+    @FXML
     private TableColumn<PlantStatusRow, String> healthColumn;
 
     @FXML
@@ -346,11 +349,12 @@ public class PrimaryController {
     }
 
     private void configureTable() {
-        plantTable.setItems(plantRows);
-        nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
-        typeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
-        healthColumn.setCellValueFactory(new PropertyValueFactory<>("health"));
-        statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
+    plantTable.setItems(plantRows);
+    nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    typeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    ageColumn.setCellValueFactory(new PropertyValueFactory<>("age"));
+    healthColumn.setCellValueFactory(new PropertyValueFactory<>("health"));
+    statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
         plantTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         
         // Use a Label with snapToPixel=false to prevent clipping, matching the FXML fix
@@ -699,6 +703,8 @@ public class PrimaryController {
         List<Integer> water = (List<Integer>) state.getOrDefault("plantWater", new ArrayList<>());
         @SuppressWarnings("unchecked")
         List<Integer> waterReq = (List<Integer>) state.getOrDefault("plantWaterRequirement", new ArrayList<>());
+    @SuppressWarnings("unchecked")
+    List<Integer> plantAges = (List<Integer>) state.getOrDefault("plantAge", new ArrayList<>());
         @SuppressWarnings("unchecked")
         List<Boolean> alive = (List<Boolean>) state.getOrDefault("plantAlive", new ArrayList<>());
         @SuppressWarnings("unchecked")
@@ -711,13 +717,14 @@ public class PrimaryController {
             String type = safeGet(types, i);
             double healthValue = i < health.size() ? health.get(i) : 0.0;
             int waterValue = i < water.size() ? water.get(i) : 0;
+            int ageValue = i < plantAges.size() ? plantAges.get(i) : 0;
             boolean aliveFlag = i < alive.size() && Boolean.TRUE.equals(alive.get(i));
             boolean infestedFlag = i < infested.size() && Boolean.TRUE.equals(infested.get(i));
-            plantRows.add(new PlantStatusRow(plantName, type, healthValue, waterValue, aliveFlag, infestedFlag));
+            plantRows.add(new PlantStatusRow(plantName, type, ageValue, healthValue, waterValue, aliveFlag, infestedFlag));
         }
         
         // update garden map grid
-        updateGardenMap(names, types, health, water, waterReq, alive);
+    updateGardenMap(names, types, health, water, waterReq, alive, plantAges);
 
         updateSensorReadings(state);
         updateWeatherPanel(state);
@@ -725,7 +732,8 @@ public class PrimaryController {
     
     // rebuild the garden map grid with plant tiles
     private void updateGardenMap(List<String> names, List<String> types, List<Double> health,
-                                   List<Integer> water, List<Integer> waterReq, List<Boolean> alive) {
+                                   List<Integer> water, List<Integer> waterReq, List<Boolean> alive,
+                                   List<Integer> ages) {
         gardenGrid.getChildren().clear();
         
         // limit to reasonable number for fixed view - max 40 plants recommended
@@ -737,11 +745,13 @@ public class PrimaryController {
             String type = safeGet(types, i);
             double healthValue = i < health.size() ? health.get(i) : 0.0;
             int waterValue = i < water.size() ? water.get(i) : 0;
+            int ageValue = (ages != null && i < ages.size()) ? ages.get(i) : 0;
             int waterReqValue = i < waterReq.size() ? waterReq.get(i) : 10;
             boolean aliveFlag = i < alive.size() && Boolean.TRUE.equals(alive.get(i));
             
             StackPane tile = PlantVisualizer.createPlantTile(name, type, healthValue, 
-                                                               waterValue, waterReqValue, aliveFlag);
+                                                               waterValue, waterReqValue, ageValue,
+                                                               aliveFlag);
             
             int row = i / plantsPerRow;
             int col = i % plantsPerRow;
@@ -890,13 +900,15 @@ public class PrimaryController {
     public static class PlantStatusRow {
         private final SimpleStringProperty name;
         private final SimpleStringProperty type;
+        private final SimpleStringProperty age;
         private final SimpleStringProperty health;
         private final SimpleStringProperty water;
         private final SimpleStringProperty status;
 
-        public PlantStatusRow(String name, String type, double health, int water, boolean alive, boolean infested) {
+        public PlantStatusRow(String name, String type, int ageDays, double health, int water, boolean alive, boolean infested) {
             this.name = new SimpleStringProperty(name);
             this.type = new SimpleStringProperty(type);
+            this.age = new SimpleStringProperty(ageDays + " d");
             this.health = new SimpleStringProperty(String.format("%.1f%%", health));
             this.water = new SimpleStringProperty(String.valueOf(water));
             String tag = alive ? (infested ? "ALERT" : "Stable") : "DEAD";
@@ -909,6 +921,10 @@ public class PrimaryController {
 
         public String getType() {
             return type.get();
+        }
+
+        public String getAge() {
+            return age.get();
         }
 
         public String getHealth() {
