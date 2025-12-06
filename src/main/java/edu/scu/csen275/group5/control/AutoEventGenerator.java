@@ -150,7 +150,7 @@ public class AutoEventGenerator {
         }
         
         public static AutoEventConfig defaultConfig() {
-            return new AutoEventConfig(0.4, 0.3, 0.15);
+            return new AutoEventConfig(0.15, 0.3, 0.15);
         }
         
         public double getRainChance() { return rainChance; }
