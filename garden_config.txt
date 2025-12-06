@@ -5,7 +5,7 @@
 # Current total: Rose(3) + Tomato(4) + Lettuce(3) + Sunflower(2) + Carrot(3) + Pepper(3) = 18 plants
 
 [Rose]
-instances=3
+instances=5
 waterRequirement=10
 optimalTempMin=65
 optimalTempMax=75
@@ -14,7 +14,7 @@ maxTempTolerance=95
 parasites=aphids,spider_mites
 
 [Tomato]
-instances=4
+instances=5
 waterRequirement=15
 optimalTempMin=70
 optimalTempMax=85
@@ -23,7 +23,7 @@ maxTempTolerance=100
 parasites=hornworms,spider_mites,whiteflies
 
 [Lettuce]
-instances=3
+instances=5
 waterRequirement=8
 optimalTempMin=55
 optimalTempMax=70
@@ -32,7 +32,7 @@ maxTempTolerance=80
 parasites=aphids,slugs
 
 [Sunflower]
-instances=2
+instances=3
 waterRequirement=12
 optimalTempMin=70
 optimalTempMax=85

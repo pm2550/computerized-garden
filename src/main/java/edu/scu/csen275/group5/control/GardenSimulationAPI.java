@@ -19,12 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Main API for the garden simulation. Scripts call these methods to simulate
  * weather and pest events. The UI also hooks into this to show what's happening.
  * 
- * REFACTORED: Now uses dedicated components for time management, weather simulation,
- * and event generation. Public API unchanged for backward compatibility.
- * 
  * SINGLETON: Ensures garden state persists across scene changes in UI.
- * 
- * Required by project spec - implements all methods from the Gardening System API doc.
  */
 public class GardenSimulationAPI {
 
@@ -112,13 +107,6 @@ public class GardenSimulationAPI {
      */
     static synchronized void resetInstance() {
         instance = null;
-    }
-
-    /**
-     * Check if garden has been initialized
-     */
-    public boolean isInitialized() {
-        return initialized;
     }
 
     /**
@@ -229,31 +217,19 @@ public class GardenSimulationAPI {
      * Advances the simulation by one hour automatically (timer driven).
      */
     public synchronized void advanceHourAutomatically() {
-        ensureInitialized();
-        // Fill any remaining slices, then close exactly one hour
-        int remaining = timeManager.getRemainingSlices();
-        if (remaining > 0) {
-            processAutoSlices(remaining);
-        }
-        finishHour("Timer auto advance");
+        advanceHourWithReason("Timer auto advance");
     }
 
     /**
      * Advances the simulation by one hour due to user input.
      */
     public synchronized void advanceHourManually() {
+        advanceHourWithReason("Next hour button");
+    }
+
+    private void advanceHourWithReason(String reason) {
         ensureInitialized();
-        // Add exactly one hour, preserving current intra-hour offset:
-        // 1) record current progress, 2) finish current hour, 3) reapply offset into new hour
-        int slicesDoneThisHour = timeManager.getSlicesProcessedThisHour();
-        int remaining = timeManager.getRemainingSlices();
-        if (remaining > 0) {
-            processAutoSlices(remaining);
-        }
-        finishHour("Next hour button");
-        if (slicesDoneThisHour > 0 && slicesDoneThisHour < SimulationTimeManager.getSlicesPerHour()) {
-            processAutoSlices(slicesDoneThisHour);
-        }
+        closeHour(reason);
     }
 
     public synchronized void setAutoEventsEnabled(boolean enabled) {
@@ -363,7 +339,13 @@ public class GardenSimulationAPI {
     }
 
     // pushes state update to observers
-    private void finishHour(String reason) {
+    private void closeHour(String reason) {
+        // Process remaining slices
+        int remaining = timeManager.getRemainingSlices();
+        for (int i = 0; i < remaining; i++) {
+            processSlice();
+        }
+        
         timeManager.advanceHour();
         int hour = timeManager.getHoursElapsed();
         
@@ -438,7 +420,7 @@ public class GardenSimulationAPI {
             observer.onLogAppended(entry);
         }
     }
-    
+
     /**
      * Process multiple slices for UI/timer (public API)
      */
@@ -447,12 +429,7 @@ public class GardenSimulationAPI {
         if (slices <= 0) return;
         
         for (int i = 0; i < slices && !timeManager.isHourComplete(); i++) {
-            int processed = timeManager.processSlices(1);
-            if (processed > 0) {
-                processSlice();
-            } else {
-                break;
-            }
+            processSlice();
         }
     }
 

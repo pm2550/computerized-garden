@@ -9,6 +9,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.util.Duration;
 
 /**
  * Helper for visualizing plant status. Uses color coding instead of images
@@ -63,6 +64,9 @@ public class PlantVisualizer {
             alive ? "Alive" : "Dead"
         );
         Tooltip tooltip = new Tooltip(tooltipText);
+        tooltip.setShowDelay(Duration.millis(150));
+        tooltip.setHideDelay(Duration.millis(200));
+        tooltip.setShowDuration(Duration.seconds(10));
         Tooltip.install(tile, tooltip);
         
         return tile;
