@@ -19,7 +19,6 @@ import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -37,6 +36,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class PrimaryController {
 
@@ -119,7 +120,7 @@ public class PrimaryController {
 
     private Spinner<Integer> temperatureSpinner;
 
-    private TextField parasiteField;
+    private ComboBox<String> parasiteCombo;
 
     private Stage developerStage;
 
@@ -243,12 +244,16 @@ public class PrimaryController {
     @FXML
     private void handleParasiteEvent() {
         try {
-            if (parasiteField == null) {
+            if (parasiteCombo == null) {
                 appendLog("Developer console not initialized - no parasite control available.");
                 return;
             }
-            api.parasite(parasiteField.getText());
-            parasiteField.clear();
+            String selection = parasiteCombo.getValue();
+            if (selection == null || selection.isBlank()) {
+                appendLog("Select a parasite from the dropdown before releasing.");
+                return;
+            }
+            api.parasite(selection);
         } catch (Exception ex) {
             appendLog("Parasite event failed: " + ex.getMessage());
         }
@@ -293,6 +298,7 @@ public class PrimaryController {
             buildDeveloperConsole();
         }
         if (developerStage != null) {
+            refreshParasiteChoices();
             developerStage.show();
             developerStage.toFront();
         }
@@ -307,9 +313,12 @@ public class PrimaryController {
 
         rainSpinner = new Spinner<>();
         temperatureSpinner = new Spinner<>();
-        parasiteField = new TextField();
+    parasiteCombo = new ComboBox<>();
+    parasiteCombo.setPrefWidth(150);
+    parasiteCombo.setDisable(true);
         configureSpinners();
         updateRainGuidance();
+    refreshParasiteChoices();
 
         Button rainButton = new Button("Dispatch Rain");
         rainButton.setOnAction(e -> handleRainEvent());
@@ -319,9 +328,9 @@ public class PrimaryController {
         temperatureButton.setOnAction(e -> handleTemperatureEvent());
         HBox temperatureRow = new HBox(8, temperatureSpinner, temperatureButton);
 
-        Button parasiteButton = new Button("Release Parasite");
-        parasiteButton.setOnAction(e -> handleParasiteEvent());
-        HBox parasiteRow = new HBox(8, parasiteField, parasiteButton);
+    Button parasiteButton = new Button("Release Parasite");
+    parasiteButton.setOnAction(e -> handleParasiteEvent());
+    HBox parasiteRow = new HBox(8, parasiteCombo, parasiteButton);
 
         VBox root = new VBox(12,
                 new Label("Manual Weather & Parasite Controls"),
@@ -368,7 +377,7 @@ public class PrimaryController {
     }
 
     private void configureSpinners() {
-        if (rainSpinner == null || temperatureSpinner == null || parasiteField == null) {
+        if (rainSpinner == null || temperatureSpinner == null) {
             return;
         }
         rainSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(5, 20, 10));
@@ -728,6 +737,7 @@ public class PrimaryController {
 
         updateSensorReadings(state);
         updateWeatherPanel(state);
+        refreshParasiteChoices();
     }
     
     // rebuild the garden map grid with plant tiles
@@ -798,6 +808,50 @@ public class PrimaryController {
             factory.setMin(api.getMinWaterRequirement());
             factory.setMax(api.getMaxWaterRequirement());
             factory.setValue(api.getMinWaterRequirement());
+        }
+    }
+
+    private void refreshParasiteChoices() {
+        if (parasiteCombo == null) {
+            return;
+        }
+
+        Set<String> parasites = new TreeSet<>();
+        try {
+            Map<String, Object> plantPayload = api.getPlants();
+            @SuppressWarnings("unchecked")
+            List<List<String>> matrix = (List<List<String>>) plantPayload.getOrDefault("parasites", Collections.emptyList());
+            for (List<String> row : matrix) {
+                if (row == null) {
+                    continue;
+                }
+                for (String entry : row) {
+                    if (entry != null && !entry.isBlank()) {
+                        parasites.add(entry);
+                    }
+                }
+            }
+        } catch (IllegalStateException notReady) {
+            parasiteCombo.getItems().clear();
+            parasiteCombo.setPromptText("Initialize garden to populate list");
+            parasiteCombo.setDisable(true);
+            return;
+        } catch (Exception ex) {
+            appendLog("Parasite list refresh failed: " + ex.getMessage());
+        }
+
+        if (parasites.isEmpty()) {
+            parasiteCombo.getItems().clear();
+            parasiteCombo.setPromptText("No parasite data available");
+            parasiteCombo.setDisable(true);
+            return;
+        }
+
+        String current = parasiteCombo.getValue();
+        parasiteCombo.getItems().setAll(parasites);
+        parasiteCombo.setDisable(false);
+        if (current == null || !parasites.contains(current)) {
+            parasiteCombo.setValue(parasites.iterator().next());
         }
     }
 
