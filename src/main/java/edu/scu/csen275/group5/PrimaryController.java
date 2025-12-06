@@ -908,23 +908,26 @@ public class PrimaryController {
         boolean raining = Boolean.TRUE.equals(weather.get("raining"));
         int active = toInt(weather.get("activeRainAmount"), 0);
         int last = toInt(weather.get("lastRainAmount"), 0);
-        int secondsSince = toInt(weather.get("secondsSinceRain"), -1);
+        int hoursSince = toInt(weather.get("hoursSinceRain"), -1);
 
         if (raining) {
             return String.format("Raining (%du)", active);
         }
-        if (secondsSince < 0) {
+        if (hoursSince < 0) {
             return "Dry — no rain yet";
         }
-        if (secondsSince < 60) {
-            return String.format("Rain ended <1m ago (%du)", last);
+        if (hoursSince == 0) {
+            return String.format("Rain ended <1h ago (%du)", last);
         }
-        int minutes = secondsSince / 60;
-        if (minutes < 60) {
-            return String.format("Last rain %dm ago (%du)", minutes, last);
+        if (hoursSince < 24) {
+            return String.format("Last rain %dh ago (%du)", hoursSince, last);
         }
-        int hours = minutes / 60;
-        return String.format("Last rain %dh ago (%du)", hours, last);
+        int days = hoursSince / 24;
+        int remainingHours = hoursSince % 24;
+        if (remainingHours == 0) {
+            return String.format("Last rain %dd ago (%du)", days, last);
+        }
+        return String.format("Last rain %dd %dh ago (%du)", days, remainingHours, last);
     }
 
     private String formatCloudSummary(Map<String, Object> weather) {

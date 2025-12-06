@@ -9,17 +9,17 @@ import java.util.Random;
  * Used for weather condition display in UI.
  */
 public class WeatherTelemetry {
-    private static final long ACTIVE_RAIN_WINDOW_MS = 60_000L;
+    private static final int ACTIVE_RAIN_WINDOW_HOURS = 1;
     
     private double cloudCoverFraction = 0.35;
     private int lastTemperature = 70;
-    private long lastRainTimestampMs = 0L;
     private int lastRainAmount = 0;
+    private int lastRainSimHour = -1;
     private final Random random = new Random();
 
-    public void recordRainfall(int amount) {
+    public void recordRainfall(int amount, int currentHour) {
         lastRainAmount = amount;
-        lastRainTimestampMs = System.currentTimeMillis();
+        lastRainSimHour = currentHour;
         cloudCoverFraction = Math.min(1.0, cloudCoverFraction + 0.2);
     }
 
@@ -27,17 +27,16 @@ public class WeatherTelemetry {
         lastTemperature = temperature;
     }
 
-    public void nudgeClouds(boolean isNight) {
-        double target = isRainActive(System.currentTimeMillis())
+    public void nudgeClouds(boolean isNight, int hoursElapsed) {
+        double target = isRainActive(hoursElapsed)
                 ? 0.85
                 : (isNight ? 0.35 : 0.45 + random.nextDouble() * 0.25);
         cloudCoverFraction += (target - cloudCoverFraction) * 0.2;
         cloudCoverFraction = clamp(cloudCoverFraction, 0.05, 1.0);
     }
 
-    public Map<String, Object> snapshot(boolean isNight, int hourOfDay) {
-        long now = System.currentTimeMillis();
-        boolean raining = isRainActive(now);
+    public Map<String, Object> snapshot(boolean isNight, int hourOfDay, int hoursElapsed) {
+        boolean raining = isRainActive(hoursElapsed);
         Map<String, Object> weather = new LinkedHashMap<>();
         double clouds = clamp(cloudCoverFraction, 0.0, 1.0);
         
@@ -49,16 +48,16 @@ public class WeatherTelemetry {
         weather.put("raining", raining);
         weather.put("activeRainAmount", raining ? lastRainAmount : 0);
         weather.put("lastRainAmount", lastRainAmount);
-        weather.put("secondsSinceRain", lastRainTimestampMs == 0 ? -1
-                : (int) Math.max(0, (now - lastRainTimestampMs) / 1000));
+        weather.put("hoursSinceRain", lastRainSimHour < 0 ? -1
+                : Math.max(0, hoursElapsed - lastRainSimHour));
         weather.put("temperature", lastTemperature);
         weather.put("condition", describeCondition(isNight, raining, clouds));
         
         return weather;
     }
 
-    private boolean isRainActive(long now) {
-        return lastRainTimestampMs > 0 && (now - lastRainTimestampMs) <= ACTIVE_RAIN_WINDOW_MS;
+    private boolean isRainActive(int hoursElapsed) {
+        return lastRainSimHour >= 0 && (hoursElapsed - lastRainSimHour) < ACTIVE_RAIN_WINDOW_HOURS;
     }
 
     private static double clamp(double value, double min, double max) {

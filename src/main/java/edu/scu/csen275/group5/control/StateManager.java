@@ -31,9 +31,10 @@ public class StateManager {
     public Map<String, Object> captureState() {
         Map<String, Object> snapshot = garden.getState();
         int hourOfDay = timeManager.getCurrentHourOfDay();
+        int hoursElapsed = timeManager.getHoursElapsed();
         boolean night = weatherSimulator.isNightHour(hourOfDay);
-        snapshot.put("hoursElapsed", timeManager.getHoursElapsed());
-        snapshot.put("weather", weatherTelemetry.snapshot(night, hourOfDay));
+        snapshot.put("hoursElapsed", hoursElapsed);
+        snapshot.put("weather", weatherTelemetry.snapshot(night, hourOfDay, hoursElapsed));
         return snapshot;
     }
     

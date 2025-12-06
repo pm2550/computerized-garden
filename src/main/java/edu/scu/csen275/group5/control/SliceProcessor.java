@@ -55,8 +55,8 @@ public class SliceProcessor {
         applyEvents(events, summary);
         
         // 3. Update weather telemetry
-        boolean isNight = weatherSimulator.isNightHour(timeManager.getCurrentHourOfDay());
-        weatherTelemetry.nudgeClouds(isNight);
+    boolean isNight = weatherSimulator.isNightHour(timeManager.getCurrentHourOfDay());
+    weatherTelemetry.nudgeClouds(isNight, timeManager.getHoursElapsed());
         
         // 4. Advance time
         timeManager.processSlices(1);
@@ -70,8 +70,8 @@ public class SliceProcessor {
     public void processSliceWithoutAutoEvents() {
         garden.advanceSlice();
         
-        boolean isNight = weatherSimulator.isNightHour(timeManager.getCurrentHourOfDay());
-        weatherTelemetry.nudgeClouds(isNight);
+    boolean isNight = weatherSimulator.isNightHour(timeManager.getCurrentHourOfDay());
+    weatherTelemetry.nudgeClouds(isNight, timeManager.getHoursElapsed());
         
         timeManager.processSlices(1);
     }
@@ -84,7 +84,7 @@ public class SliceProcessor {
         if (events.hasRain()) {
             int rainfall = clampRainfall(events.rainfall);
             garden.applyRainfall(rainfall);
-            weatherTelemetry.recordRainfall(rainfall);
+            weatherTelemetry.recordRainfall(rainfall, timeManager.getHoursElapsed());
             summary.append(String.format("rain=%du ", rainfall));
             logger.log("RAIN", "Auto rainfall: " + rainfall + " units");
         }

@@ -180,8 +180,8 @@ public class GardenSimulationAPI {
         if (validated != rainfallAmount) {
             logger.log("RAIN", "Requested " + rainfallAmount + " units. Clamped to " + validated + ".");
         }
-        garden.applyRainfall(validated);
-        weatherTelemetry.recordRainfall(validated);
+    garden.applyRainfall(validated);
+    weatherTelemetry.recordRainfall(validated, timeManager.getHoursElapsed());
         logger.log("RAIN", "Manual rainfall applied: " + validated + " units");
         refreshAndBroadcastState();
     }
