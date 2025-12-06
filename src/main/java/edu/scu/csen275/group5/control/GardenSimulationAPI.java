@@ -193,6 +193,7 @@ public class GardenSimulationAPI {
         ensureInitialized();
         garden.applyTemperature(temperatureFahrenheit);
         weatherTelemetry.recordTemperature(temperatureFahrenheit);
+        logger.log("TEMPERATURE", "Manual temperature set to " + temperatureFahrenheit + "°F");
         refreshAndBroadcastState();
     }
 
