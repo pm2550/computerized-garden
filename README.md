@@ -20,6 +20,7 @@ mvn clean javafx:run
 4. The **Help / Log Guide** button opens a short reference explaining `log.txt` expectations.
 5. Hit **Next Hour** whenever you want to advance exactly one simulated hour for deterministic grading—no random rain or parasites are injected during this manual hop.
 6. Use the **Time Speed** dropdown (1× / 2× / 4×) to choose how fast the auto timer chews through slices; the countdown label updates in real time so you always see the remaining seconds.
+7. Toggle **Auto Weather & Events** if you want the simulation to inject natural rain bursts, diurnal temperature swings, and occasional parasite drift automatically; switch it off for fully manual control.
 
 ## API
 
