@@ -5,8 +5,8 @@ This module delivers the "control room" portion of the Computerized Garden proje
 ## Highlights
 
 - **JavaFX Control Room** – the `primary.fxml` scene surfaces plant health, live logs, and buttons for rain, temperature, parasite, and state snapshot events.
-- **`GardenSimulationAPI`** – the automation surface expected by grading scripts. It seeds the garden from `garden_config.txt`, enforces input bounds, advances the simulation clock, and keeps observers in sync.
-- **Structured Logging** – every event writes to `log.txt` using the format `YYYY-MM-DD HH:MM:SS [TAG] Message`. The UI streams the last ~250 lines while the full file is suitable for grading audits.
+- **`GardenSimulationAPI`** – the automation surface expected by our harness and any custom scripts. It seeds the garden from `garden_config.txt`, enforces input bounds, advances the simulation clock, and keeps observers in sync.
+- **Structured Logging** – every event writes to `log.txt` using the format `YYYY-MM-DD HH:MM:SS [TAG] Message`. The UI streams the last ~250 lines while the full file remains ready for deeper analysis or replay.
 
 ## Running the UI
 
@@ -18,7 +18,7 @@ mvn clean javafx:run
 2. Use the Rain / Temperature / Parasite controls to simulate the hourly events described in the spec. Each call advances the clock by one simulated day/hour.
 3. Press **Snapshot** anytime to force a logged state summary.
 4. The **Help / Log Guide** button opens a short reference explaining `log.txt` expectations.
-5. Hit **Next Hour** whenever you want to advance exactly one simulated hour for deterministic grading—no random rain or parasites are injected during this manual hop.
+5. Hit **Next Hour** whenever you want to advance exactly one simulated hour for a deterministic replay—no random rain or parasites are injected during this manual hop.
 6. Use the **Time Speed** dropdown (1× / 2× / 4×) to choose how fast the auto timer chews through slices; the countdown label updates in real time so you always see the remaining seconds.
 7. Toggle **Auto Weather & Events** if you want the simulation to inject natural rain bursts, diurnal temperature swings, and occasional parasite drift automatically; switch it off for fully manual control.
 
