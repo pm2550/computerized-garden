@@ -18,6 +18,8 @@ mvn clean javafx:run
 2. Use the Rain / Temperature / Parasite controls to simulate the hourly events described in the spec. Each call advances the clock by one simulated day/hour.
 3. Press **Snapshot** anytime to force a logged state summary.
 4. The **Help / Log Guide** button opens a short reference explaining `log.txt` expectations.
+5. Hit **Next Hour** whenever you want to advance exactly one simulated hour for deterministic grading—no random rain or parasites are injected during this manual hop.
+6. Use the **Time Speed** dropdown (1× / 2× / 4×) to choose how fast the auto timer chews through slices; the countdown label updates in real time so you always see the remaining seconds.
 
 ## API
 
