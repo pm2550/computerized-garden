@@ -56,3 +56,10 @@ replay_pid*
 *.tmp
 *.bak
 *.orig
+
+
+# Documentation generated files
+/docs 
+
+/.venv 
+/lib 

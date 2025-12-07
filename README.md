@@ -76,10 +76,9 @@ They create temporary config/log files, seed plants, and verify that environment
 
 ## Logging Manual (also shown in the Help view)
 
-- File: `log.txt` (project root). Keep it with your submission.
+- File: `log.txt` (project root).
 - Format: `TIMESTAMP [TAG] message`.
 - Important tags: `INIT`, `PLANT`, `RAIN`, `TEMPERATURE`, `PARASITE`, `DAY`, `STATE`.
 - Use the UI Snapshot button (or call `getState()`) to inject a `[STATE]` summary every 24 hours of simulation time.
 - `ALERT` status in the plant table hints at living plants fighting active parasites—cross-check with log entries.
 
-With this layer in place the TA can trigger scripted events, watch the UI respond, and audit `log.txt` afterwards without needing verbal explanations.
