@@ -68,7 +68,6 @@
          <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
          <HBox spacing="10" snapToPixel="false">
             <Button fx:id="initButton" text="Initialize Garden" onAction="#handleInitializeGarden"/>
-            <Label fx:id="rainGuidanceLabel" text="Rain range: --"/>
             <Pane HBox.hgrow="ALWAYS"/>
             <CheckBox fx:id="autoWeatherCheckBox" text="Auto Weather / Random Events"/>
             <Button text="Developer Console" onAction="#handleOpenDeveloperConsole"/>
