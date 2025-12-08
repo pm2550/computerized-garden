@@ -53,7 +53,6 @@ public class PrimaryController {
     @FXML
     private Label timerStatusLabel;
 
-    @FXML
     private Label rainGuidanceLabel;
     
     @FXML
@@ -313,9 +312,10 @@ public class PrimaryController {
 
         rainSpinner = new Spinner<>();
         temperatureSpinner = new Spinner<>();
-    parasiteCombo = new ComboBox<>();
-    parasiteCombo.setPrefWidth(150);
-    parasiteCombo.setDisable(true);
+        parasiteCombo = new ComboBox<>();
+        parasiteCombo.setPrefWidth(150);
+        parasiteCombo.setDisable(true);
+        rainGuidanceLabel = new Label("Rain range: --");
         configureSpinners();
         updateRainGuidance();
     refreshParasiteChoices();
@@ -332,11 +332,16 @@ public class PrimaryController {
     parasiteButton.setOnAction(e -> handleParasiteEvent());
     HBox parasiteRow = new HBox(8, parasiteCombo, parasiteButton);
 
-        VBox root = new VBox(12,
-                new Label("Manual Weather & Parasite Controls"),
-                new VBox(6, new Label("Rain (units)"), rainRow),
-                new VBox(6, new Label("Temperature (°F)"), temperatureRow),
-                new VBox(6, new Label("Parasite"), parasiteRow));
+    VBox rainSection = new VBox(6,
+        new Label("Rain (units)"),
+        rainGuidanceLabel,
+        rainRow);
+
+    VBox root = new VBox(12,
+        new Label("Manual Weather & Parasite Controls"),
+        rainSection,
+        new VBox(6, new Label("Temperature (°F)"), temperatureRow),
+        new VBox(6, new Label("Parasite"), parasiteRow));
         root.setPadding(new Insets(16));
 
         Scene scene = new Scene(root);
@@ -801,7 +806,9 @@ public class PrimaryController {
     }
 
     private void updateRainGuidance() {
-        rainGuidanceLabel.setText(String.format("Rain range: %d - %d units", api.getMinWaterRequirement(), api.getMaxWaterRequirement()));
+        if (rainGuidanceLabel != null) {
+            rainGuidanceLabel.setText(String.format("Rain range: %d - %d units", api.getMinWaterRequirement(), api.getMaxWaterRequirement()));
+        }
         if (rainSpinner != null) {
             SpinnerValueFactory.IntegerSpinnerValueFactory factory =
                     (SpinnerValueFactory.IntegerSpinnerValueFactory) rainSpinner.getValueFactory();
