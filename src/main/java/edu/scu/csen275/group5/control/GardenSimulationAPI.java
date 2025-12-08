@@ -167,21 +167,29 @@ public class GardenSimulationAPI {
     }
 
     /**
-     * Simulates rainfall. Amount is clamped to match plant water requirements
-     * (spec says range depends on getPlants().waterRequirement values).
+     * Simulates rainfall. Amount is clamped to the allowed band derived from
+     * current plants: min requirement through 150% of the largest requirement.
      */
     public synchronized void rain(int rainfallAmount) {
         ensureInitialized();
-        // Use StateManager to get current water requirement range and clamp
         int minWater = stateManager.getMinWaterRequirement();
-        int maxWater = stateManager.getMaxWaterRequirement();
-        int validated = Math.max(minWater, Math.min(maxWater, rainfallAmount));
-        
+        int recommendedMax = stateManager.getMaxWaterRequirement();
+        int maxAllowed = stateManager.getMaxRainfallAllowance();
+        int validated = stateManager.clampRainfall(rainfallAmount);
+
         if (validated != rainfallAmount) {
-            logger.log("RAIN", "Requested " + rainfallAmount + " units. Clamped to " + validated + ".");
+            logger.log("RAIN", String.format(
+                    "Requested %d units. Clamped to %d (allowed %d-%d).",
+                    rainfallAmount, validated, minWater, maxAllowed));
         }
-    garden.applyRainfall(validated);
-    weatherTelemetry.recordRainfall(validated, timeManager.getHoursElapsed());
+        if (validated > recommendedMax) {
+            logger.log("RAIN", String.format(
+                    "Warning: %d units exceed recommended max %d. Plants may take damage.",
+                    validated, recommendedMax));
+        }
+
+        garden.applyRainfall(validated);
+        weatherTelemetry.recordRainfall(validated, timeManager.getHoursElapsed());
         logger.log("RAIN", "Manual rainfall applied: " + validated + " units");
         refreshAndBroadcastState();
     }
@@ -254,7 +262,7 @@ public class GardenSimulationAPI {
         if (sensorBridge != null) {
             boolean acted = sensorBridge.evaluateAndAct(snapshot, 
                 stateManager.getMinWaterRequirement(), 
-                stateManager.getMaxWaterRequirement());
+                stateManager.getMaxRainfallAllowance());
             if (acted) {
                 snapshot = stateManager.captureState();
             }
@@ -304,6 +312,10 @@ public class GardenSimulationAPI {
 
     public int getMaxWaterRequirement() {
         return stateManager.getMaxWaterRequirement();
+    }
+
+    public int getMaxRainfallAllowance() {
+        return stateManager.getMaxRainfallAllowance();
     }
 
     public int getHoursElapsed() {
@@ -366,7 +378,7 @@ public class GardenSimulationAPI {
         // Update slice processor with current water requirements from StateManager
         sliceProcessor.updateWaterRequirements(
             stateManager.getMinWaterRequirement(), 
-            stateManager.getMaxWaterRequirement()
+            stateManager.getMaxRainfallAllowance()
         );
         
         // Process slice (delegates to component)

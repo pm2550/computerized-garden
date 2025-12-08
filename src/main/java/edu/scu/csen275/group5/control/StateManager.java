@@ -14,6 +14,7 @@ public class StateManager {
     
     private int minWaterRequirement;
     private int maxWaterRequirement;
+    private int maxRainfallAllowance;
     
     public StateManager(Garden garden, SimulationTimeManager timeManager,
                        WeatherSimulator weatherSimulator, WeatherTelemetry weatherTelemetry) {
@@ -23,6 +24,7 @@ public class StateManager {
         this.weatherTelemetry = weatherTelemetry;
         this.minWaterRequirement = 5;
         this.maxWaterRequirement = 20;
+        recalculateRainfallAllowance();
     }
     
     /**
@@ -46,6 +48,7 @@ public class StateManager {
         if (plants.isEmpty()) {
             minWaterRequirement = 5;
             maxWaterRequirement = 20;
+            recalculateRainfallAllowance();
             return;
         }
         
@@ -57,6 +60,18 @@ public class StateManager {
                 .mapToInt(plant -> plant.getWaterRequirement())
                 .max()
                 .orElse(20);
+        recalculateRainfallAllowance();
+    }
+
+    private void recalculateRainfallAllowance() {
+        int computed = (int) Math.ceil(maxWaterRequirement * 1.5);
+        if (computed < maxWaterRequirement) {
+            computed = maxWaterRequirement;
+        }
+        if (computed < minWaterRequirement) {
+            computed = minWaterRequirement;
+        }
+        this.maxRainfallAllowance = computed;
     }
     
     /**
@@ -71,6 +86,20 @@ public class StateManager {
      */
     public int getMaxWaterRequirement() {
         return maxWaterRequirement;
+    }
+
+    public int getMaxRainfallAllowance() {
+        return maxRainfallAllowance;
+    }
+
+    public int clampRainfall(int requested) {
+        if (requested < minWaterRequirement) {
+            return minWaterRequirement;
+        }
+        if (requested > maxRainfallAllowance) {
+            return maxRainfallAllowance;
+        }
+        return requested;
     }
     
     /**

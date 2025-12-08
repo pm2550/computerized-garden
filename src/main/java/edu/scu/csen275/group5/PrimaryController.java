@@ -806,15 +806,30 @@ public class PrimaryController {
     }
 
     private void updateRainGuidance() {
+        int min = api.getMinWaterRequirement();
+        int recommendedMax = api.getMaxWaterRequirement();
+        int extremeMax = api.getMaxRainfallAllowance();
+
         if (rainGuidanceLabel != null) {
-            rainGuidanceLabel.setText(String.format("Rain range: %d - %d units", api.getMinWaterRequirement(), api.getMaxWaterRequirement()));
+            if (extremeMax > recommendedMax) {
+                rainGuidanceLabel.setText(String.format(
+                        "Rain range: %d-%d (hazard cap %d)",
+                        min, recommendedMax, extremeMax));
+            } else {
+                rainGuidanceLabel.setText(String.format("Rain range: %d-%d", min, recommendedMax));
+            }
         }
         if (rainSpinner != null) {
             SpinnerValueFactory.IntegerSpinnerValueFactory factory =
                     (SpinnerValueFactory.IntegerSpinnerValueFactory) rainSpinner.getValueFactory();
-            factory.setMin(api.getMinWaterRequirement());
-            factory.setMax(api.getMaxWaterRequirement());
-            factory.setValue(api.getMinWaterRequirement());
+            factory.setMin(min);
+            factory.setMax(extremeMax);
+            Integer current = rainSpinner.getValue();
+            if (current == null) {
+                current = recommendedMax;
+            }
+            int safeDefault = Math.min(Math.max(current, min), recommendedMax);
+            factory.setValue(safeDefault);
         }
     }
 

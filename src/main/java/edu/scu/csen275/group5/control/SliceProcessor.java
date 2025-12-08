@@ -15,7 +15,7 @@ public class SliceProcessor {
     private final GardenLogger logger;
     
     private int minWaterRequirement;
-    private int maxWaterRequirement;
+    private int maxRainfallAllowance;
     
     public SliceProcessor(Garden garden, SimulationTimeManager timeManager,
                          WeatherSimulator weatherSimulator, AutoEventGenerator eventGenerator,
@@ -26,16 +26,16 @@ public class SliceProcessor {
         this.eventGenerator = eventGenerator;
         this.weatherTelemetry = weatherTelemetry;
         this.logger = logger;
-        this.minWaterRequirement = 5;
-        this.maxWaterRequirement = 20;
+    this.minWaterRequirement = 5;
+    this.maxRainfallAllowance = 20;
     }
     
     /**
      * Update water requirement range for rainfall clamping
      */
-    public void updateWaterRequirements(int min, int max) {
+    public void updateWaterRequirements(int min, int maxRainfallAllowance) {
         this.minWaterRequirement = min;
-        this.maxWaterRequirement = max;
+        this.maxRainfallAllowance = maxRainfallAllowance;
     }
     
     /**
@@ -124,8 +124,8 @@ public class SliceProcessor {
         if (requested < minWaterRequirement) {
             return minWaterRequirement;
         }
-        if (requested > maxWaterRequirement) {
-            return maxWaterRequirement;
+        if (requested > maxRainfallAllowance) {
+            return maxRainfallAllowance;
         }
         return requested;
     }

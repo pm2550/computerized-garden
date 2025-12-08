@@ -46,11 +46,23 @@ class GardenSimulationAPITest {
     void rainEventClampsWithoutAdvancingClock() {
         api.initializeGarden();
         int before = api.getHoursElapsed();
-        api.rain(api.getMaxWaterRequirement() + 50);
+        api.rain(api.getMaxRainfallAllowance() + 50);
         assertEquals(before, api.getHoursElapsed());
         boolean clampLogged = api.recentLogEntries().stream()
                 .anyMatch(line -> line.contains("Clamped"));
         assertTrue(clampLogged, "Clamp log entry missing");
+    }
+
+    @Test
+    void rainEventWarnsWhenExceedingRecommendedMax() {
+        api.initializeGarden();
+        int recommended = api.getMaxWaterRequirement();
+        int extreme = api.getMaxRainfallAllowance();
+        assertTrue(extreme > recommended, "Expected hazard cap above recommended range for this fixture");
+        api.rain(recommended + 1);
+        boolean warningLogged = api.recentLogEntries().stream()
+                .anyMatch(line -> line.contains("Warning") && line.contains("exceed recommended max"));
+        assertTrue(warningLogged, "Expected warning log when exceeding recommended max");
     }
 
     @Test
