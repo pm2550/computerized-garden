@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,7 @@ class GardenSimulationAPITest {
         logPath = tempDir.resolve("log.txt");
         writeConfig();
         api = GardenSimulationAPI.getInstance(configPath, logPath);
+        api.setAutoEventsEnabled(false);
     }
 
     @Test
@@ -75,6 +77,38 @@ class GardenSimulationAPITest {
         assertNotNull(health, "State missing plant health vector");
         boolean anyDamaged = health.stream().anyMatch(h -> h < 100.0);
         assertTrue(anyDamaged, "Expected overwatering to reduce at least one plant's health");
+    }
+
+    @Test
+    void excessiveRainDamageThrottledWithinHour() {
+        api.initializeGarden();
+        int recommended = api.getMaxWaterRequirement();
+
+        api.rain(recommended + 8);
+        List<Double> afterFirst = plantHealthSnapshot();
+
+        api.rain(recommended + 8);
+        List<Double> afterSecond = plantHealthSnapshot();
+        assertEquals(afterFirst, afterSecond, "Damage should be throttled while cooldown is active");
+
+        api.advanceHourManually();
+        api.rain(recommended + 8);
+        List<Double> afterCooldown = plantHealthSnapshot();
+
+        boolean resumed = false;
+        for (int i = 0; i < afterCooldown.size(); i++) {
+            if (afterCooldown.get(i) < afterSecond.get(i)) {
+                resumed = true;
+                break;
+            }
+        }
+        assertTrue(resumed, "Expected damage to resume after cooldown expires");
+    }
+
+    private List<Double> plantHealthSnapshot() {
+        @SuppressWarnings("unchecked")
+        List<Double> health = (List<Double>) api.currentState().get("plantHealth");
+        return new ArrayList<>(health);
     }
 
     @Test

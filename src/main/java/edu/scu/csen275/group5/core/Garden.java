@@ -14,6 +14,9 @@ public class Garden {
     private int airTemperature;  // Current air temperature in Fahrenheit
     private Map<String, PlantTemplate> plantTemplates;  // Predefined plant types
     private List<GardenEvent> eventHistory;  // Log of all events
+    private static final int RAIN_DAMAGE_COOLDOWN_SLICES = 6;  // ~= 1 hour
+    private static final int MAX_EXCESS_WATER_PER_PLANT = 12;
+    private int rainDamageCooldownSlices;
 
     /**
      * Represents a plant template with default properties
@@ -69,6 +72,7 @@ public class Garden {
         this.airTemperature = 70;  // Start at pleasant 70°F
         this.plantTemplates = new HashMap<>();
         this.eventHistory = new ArrayList<>();
+        this.rainDamageCooldownSlices = 0;
         initializeDefaultPlantTemplates();
     }
 
@@ -151,6 +155,11 @@ public class Garden {
         if (rainfallAmount <= 0) {
             return;
         }
+        if (rainDamageCooldownSlices > 0) {
+            recordEvent("RAIN_DAMAGE_COOLDOWN",
+                    "Recent rain damage still cooling down. Slices remaining: " + rainDamageCooldownSlices);
+            return;
+        }
         int maxRequirement = plants.stream()
                 .filter(Plant::isAlive)
                 .mapToInt(Plant::getWaterRequirement)
@@ -170,7 +179,7 @@ public class Garden {
                 continue;
             }
             double extraWater = plant.getWaterRequirement() * excessMultiplier;
-            int extraUnits = (int) Math.ceil(extraWater);
+            int extraUnits = (int) Math.ceil(Math.min(MAX_EXCESS_WATER_PER_PLANT, extraWater));
             if (extraUnits <= 0) {
                 continue;
             }
@@ -183,6 +192,7 @@ public class Garden {
         }
 
         if (!damaged.isEmpty()) {
+            rainDamageCooldownSlices = RAIN_DAMAGE_COOLDOWN_SLICES;
             recordEvent("RAIN_DAMAGE", "Excess rainfall harmed " + damaged.size() + " plant(s): " +
                     String.join(", ", damaged));
         }
@@ -286,6 +296,9 @@ public class Garden {
      * Advance the simulation by one slice (10 simulated minutes)
      */
     public void advanceSlice() {
+        if (rainDamageCooldownSlices > 0) {
+            rainDamageCooldownSlices--;
+        }
         // First let plants absorb water from soil BEFORE consuming
         for (Plant plant : plants) {
             if (plant.isAlive()) {
