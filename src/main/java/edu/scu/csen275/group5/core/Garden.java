@@ -141,12 +141,51 @@ public class Garden {
      */
     public void applyRainfall(int rainfallAmount) {
         soil.addWater(rainfallAmount);
-        
-        // Rainfall only goes to soil, not directly to plants
-        // Plants will absorb water from soil as needed
+        applyExcessRainfallToPlants(rainfallAmount);
         
         recordEvent("RAIN", "Rainfall applied: " + rainfallAmount + " units. Soil moisture: " + 
                    String.format("%.1f%%", soil.getMoisture()));
+    }
+
+    private void applyExcessRainfallToPlants(int rainfallAmount) {
+        if (rainfallAmount <= 0) {
+            return;
+        }
+        int maxRequirement = plants.stream()
+                .filter(Plant::isAlive)
+                .mapToInt(Plant::getWaterRequirement)
+                .max()
+                .orElse(0);
+        if (maxRequirement <= 0 || rainfallAmount <= maxRequirement) {
+            return;
+        }
+        double excessMultiplier = ((double) rainfallAmount / maxRequirement) - 1.0;
+        if (excessMultiplier <= 0) {
+            return;
+        }
+
+        List<String> damaged = new ArrayList<>();
+        for (Plant plant : plants) {
+            if (!plant.isAlive()) {
+                continue;
+            }
+            double extraWater = plant.getWaterRequirement() * excessMultiplier;
+            int extraUnits = (int) Math.ceil(extraWater);
+            if (extraUnits <= 0) {
+                continue;
+            }
+            double beforeHealth = plant.getHealth();
+            plant.addWater(extraUnits);
+            if (plant.getHealth() < beforeHealth) {
+                damaged.add(String.format("%s(%.0f→%.0f%%)",
+                        plant.getName(), beforeHealth, plant.getHealth()));
+            }
+        }
+
+        if (!damaged.isEmpty()) {
+            recordEvent("RAIN_DAMAGE", "Excess rainfall harmed " + damaged.size() + " plant(s): " +
+                    String.join(", ", damaged));
+        }
     }
 
     /**

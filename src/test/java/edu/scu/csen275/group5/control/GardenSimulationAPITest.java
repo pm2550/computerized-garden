@@ -66,6 +66,18 @@ class GardenSimulationAPITest {
     }
 
     @Test
+    void excessiveRainImmediatelyDamagesPlants() {
+        api.initializeGarden();
+        int recommended = api.getMaxWaterRequirement();
+        api.rain(recommended + 8);
+        @SuppressWarnings("unchecked")
+        List<Double> health = (List<Double>) api.currentState().get("plantHealth");
+        assertNotNull(health, "State missing plant health vector");
+        boolean anyDamaged = health.stream().anyMatch(h -> h < 100.0);
+        assertTrue(anyDamaged, "Expected overwatering to reduce at least one plant's health");
+    }
+
+    @Test
     void getPlantsReturnsParasiteMatrix() {
         api.initializeGarden();
         Map<String, Object> plants = api.getPlants();
