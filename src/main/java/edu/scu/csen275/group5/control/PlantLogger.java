@@ -142,9 +142,9 @@ public class PlantLogger {
      * Describe health level in human terms
      */
     private String getHealthStatus(double healthPercent) {
-        if (healthPercent >= 80) return "Healthy";
-        if (healthPercent >= 50) return "Fair";
-        if (healthPercent >= 20) return "Sick";
+        if (healthPercent >= 96) return "Healthy";
+        if (healthPercent >= 80) return "Fair";
+        if (healthPercent >= 40) return "Sick";
         if (healthPercent > 0) return "Dying";
         return "Dead";
     }

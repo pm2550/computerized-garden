@@ -76,11 +76,11 @@ public class PlantVisualizer {
     
     // maps plant health to a color for display
     public static Color getHealthColor(double healthPercent) {
-        if (healthPercent >= 80) {
+        if (healthPercent >= 96) {
             return Color.DARKGREEN;  // thriving
-        } else if (healthPercent >= 50) {
+        } else if (healthPercent >= 80) {
             return Color.YELLOWGREEN;  // OK
-        } else if (healthPercent >= 20) {
+        } else if (healthPercent >= 40) {
             return Color.ORANGE;  // struggling
         } else {
             return Color.DARKRED;  // dying
