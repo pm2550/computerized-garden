@@ -23,12 +23,12 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) throws IOException {
-        scene = new Scene(loadPrimary(), 1100, 720);
+    scene = new Scene(loadPrimary(), 1340, 860);
         scene.getStylesheets().add(App.class.getResource("app.css").toExternalForm());
         stage.setTitle("Computerized Garden Control Room");
         stage.setScene(scene);
-        stage.setMinWidth(900);
-        stage.setMinHeight(600);
+    stage.setMinWidth(1100);
+    stage.setMinHeight(720);
         stage.show();
     }
 

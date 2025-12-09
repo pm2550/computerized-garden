@@ -4,7 +4,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<BorderPane prefHeight="720.0" prefWidth="1100.0" snapToPixel="false" styleClass="app-root" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.scu.csen275.group5.PrimaryController">
+<BorderPane prefHeight="860.0" prefWidth="1340.0" snapToPixel="false" styleClass="app-root" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.scu.csen275.group5.PrimaryController">
    <top>
       <VBox spacing="8.0" snapToPixel="false" styleClass="app-header">
          <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
