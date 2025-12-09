@@ -126,6 +126,11 @@ public class PrimaryController {
     private final ObservableList<PlantStatusRow> plantRows = FXCollections.observableArrayList();
     private final GardenSimulationAPI api = GardenSimulationAPI.getInstance();
     private Boolean gardenShowingNight = null;
+    private static final String GARDEN_PANEL_BASE_STYLE =
+        "-fx-border-radius: 20; -fx-background-radius: 20; -fx-padding: 10;";
+    private static final String GARDEN_PANEL_FALLBACK_STYLE =
+        GARDEN_PANEL_BASE_STYLE +
+        " -fx-border-color: #4caf50; -fx-border-width: 2; -fx-background-color: #e8f5e9;";
 
     private static final double SIM_HOUR_SECONDS = 3600.0; // 1 simulated hour = 3600 simulated seconds
     private static final double BASE_HOUR_SECONDS = SIM_HOUR_SECONDS; // 1x = 3600 real seconds per sim hour
@@ -166,24 +171,25 @@ public class PrimaryController {
         try {
             URL imageUrl = resolveGardenImage(useNightImage ? "garden_night.png" : "garden.png");
             if (imageUrl == null) {
-                gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
+                gardenBackground.setStyle(GARDEN_PANEL_FALLBACK_STYLE);
                 gardenShowingNight = useNightImage;
                 return;
             }
             String style = String.format(
-                    "-fx-background-image: url('%s'); " +
-                    "-fx-background-size: 100%% auto; " +
-                    "-fx-background-repeat: no-repeat; " +
-                    "-fx-background-position: center center; " +
-                    "-fx-border-color: #4caf50; " +
-                    "-fx-border-width: 2;",
+                    GARDEN_PANEL_BASE_STYLE +
+                    " -fx-border-color: #4caf50; " +
+                    " -fx-border-width: 2; " +
+                    " -fx-background-image: url('%s'); " +
+                    " -fx-background-size: cover; " +
+                    " -fx-background-repeat: no-repeat; " +
+                    " -fx-background-position: center center;",
                     imageUrl.toExternalForm()
             );
             gardenBackground.setStyle(style);
             gardenShowingNight = useNightImage;
         } catch (Exception e) {
             System.err.println("Could not load garden background: " + e.getMessage());
-            gardenBackground.setStyle("-fx-background-color: #e8f5e9; -fx-border-color: #4caf50; -fx-border-width: 2;");
+            gardenBackground.setStyle(GARDEN_PANEL_FALLBACK_STYLE);
         }
     }
 

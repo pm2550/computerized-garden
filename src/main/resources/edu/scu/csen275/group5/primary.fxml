@@ -4,27 +4,27 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<BorderPane prefHeight="720.0" prefWidth="1100.0" snapToPixel="false" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.scu.csen275.group5.PrimaryController">
+<BorderPane prefHeight="720.0" prefWidth="1100.0" snapToPixel="false" styleClass="app-root" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.scu.csen275.group5.PrimaryController">
    <top>
-      <VBox spacing="8.0" snapToPixel="false">
+      <VBox spacing="8.0" snapToPixel="false" styleClass="app-header">
          <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
          <Label text="Computerized Garden Control Room" styleClass="panel-heading"/>
          <VBox spacing="6" snapToPixel="false">
-            <FlowPane hgap="14" vgap="4" prefWrapLength="900" snapToPixel="false">
-               <Label fx:id="summaryLabel" text="Garden offline" styleClass="bold-label"/>
-               <Label fx:id="dayLabel" text="Day 0" styleClass="bold-label"/>
-               <Label fx:id="clockLabel" text="Sim hours: 0" styleClass="bold-label"/>
-               <Label fx:id="timerStatusLabel" text="Timer: waiting..." styleClass="bold-label"/>
+            <FlowPane hgap="14" vgap="6" prefWrapLength="900" snapToPixel="false" styleClass="status-chip-row">
+               <Label fx:id="summaryLabel" text="Garden offline" styleClass="bold-label status-chip status-chip-primary"/>
+               <Label fx:id="dayLabel" text="Day 0" styleClass="bold-label status-chip"/>
+               <Label fx:id="clockLabel" text="Sim hours: 0" styleClass="bold-label status-chip"/>
+               <Label fx:id="timerStatusLabel" text="Timer: waiting..." styleClass="bold-label status-chip status-chip-muted"/>
             </FlowPane>
             <HBox spacing="12" alignment="CENTER_LEFT" snapToPixel="false">
-               <Button fx:id="nextHourButton" text="Next Hour" onAction="#handleNextHour" disable="true"/>
+               <Button fx:id="nextHourButton" text="Next Hour" onAction="#handleNextHour" disable="true" styleClass="primary-button"/>
                <HBox spacing="6" alignment="CENTER_LEFT" snapToPixel="false">
                   <Label text="Speed"/>
                   <ComboBox fx:id="speedComboBox" prefWidth="120" disable="true" editable="true" promptText="1x"/>
                </HBox>
                <Pane HBox.hgrow="ALWAYS"/>
-               <Button text="Help / Log Guide" onAction="#handleOpenHelp"/>
-               <Button text="Snapshot" onAction="#handleStateSnapshot"/>
+               <Button text="Help / Log Guide" onAction="#handleOpenHelp" styleClass="ghost-button"/>
+               <Button text="Snapshot" onAction="#handleStateSnapshot" styleClass="ghost-button"/>
             </HBox>
          </VBox>
       </VBox>
@@ -36,18 +36,18 @@
             <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
             <Label text="Garden Map (Live)" styleClass="section-title"/>
             <!-- Fixed size container with garden background image -->
-            <StackPane fx:id="gardenBackground" style="-fx-border-color: #4caf50; -fx-border-width: 2; -fx-background-color: #e8f5e9;" VBox.vgrow="ALWAYS">
-               <GridPane fx:id="gardenGrid" hgap="8" vgap="8" alignment="CENTER" style="-fx-padding: 15;"/>
+            <StackPane fx:id="gardenBackground" styleClass="garden-panel" VBox.vgrow="ALWAYS">
+               <GridPane fx:id="gardenGrid" hgap="8" vgap="8" alignment="CENTER" styleClass="garden-grid"/>
             </StackPane>
          </VBox>
          
          <!-- Right Panel: Plant Details Table + Log -->
-         <VBox spacing="6" snapToPixel="false">
+         <VBox spacing="8" snapToPixel="false" styleClass="side-panel">
             <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
             
             <!-- Plant Details Table -->
             <Label text="Plant Details" styleClass="section-title"/>
-            <TableView fx:id="plantTable" prefHeight="250" VBox.vgrow="SOMETIMES" snapToPixel="false">
+            <TableView fx:id="plantTable" prefHeight="250" VBox.vgrow="SOMETIMES" snapToPixel="false" styleClass="card data-table">
                <columns>
                   <TableColumn fx:id="nameColumn" text="Plant" prefWidth="90"/>
                   <TableColumn fx:id="typeColumn" text="Type" prefWidth="80"/>
@@ -59,23 +59,23 @@
             
             <!-- Event Log -->
             <Label text="Event Log" styleClass="section-title"/>
-            <TextArea fx:id="logArea" VBox.vgrow="ALWAYS" promptText="Events will appear here..."/>
+            <TextArea fx:id="logArea" VBox.vgrow="ALWAYS" promptText="Events will appear here..." styleClass="log-area card"/>
          </VBox>
       </SplitPane>
    </center>
    <bottom>
-      <VBox spacing="12" snapToPixel="false">
+      <VBox spacing="12" snapToPixel="false" styleClass="control-dock">
          <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
-         <HBox spacing="10" snapToPixel="false">
-            <Button fx:id="initButton" text="Initialize Garden" onAction="#handleInitializeGarden"/>
+         <HBox spacing="10" snapToPixel="false" alignment="CENTER_LEFT">
+            <Button fx:id="initButton" text="Initialize Garden" onAction="#handleInitializeGarden" styleClass="primary-button"/>
             <Pane HBox.hgrow="ALWAYS"/>
             <CheckBox fx:id="autoWeatherCheckBox" text="Auto Weather / Random Events"/>
-            <Button text="Developer Console" onAction="#handleOpenDeveloperConsole"/>
+            <Button text="Developer Console" onAction="#handleOpenDeveloperConsole" styleClass="ghost-button"/>
          </HBox>
          <HBox spacing="20" alignment="CENTER_LEFT" snapToPixel="false">
-            <VBox spacing="6">
+            <VBox spacing="6" styleClass="info-card">
                <Label text="Sensors" styleClass="section-title"/>
-               <GridPane hgap="16" vgap="8">
+               <GridPane hgap="16" vgap="8" styleClass="info-grid">
                   <columnConstraints>
                      <ColumnConstraints halignment="RIGHT" minWidth="140"/>
                      <ColumnConstraints minWidth="180"/>
@@ -93,9 +93,9 @@
                   <Label fx:id="parasiteStatusLabel" text="None" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
                </GridPane>
             </VBox>
-            <VBox spacing="6">
+            <VBox spacing="6" styleClass="info-card">
                <Label text="Weather" styleClass="section-title"/>
-               <GridPane hgap="16" vgap="8">
+               <GridPane hgap="16" vgap="8" styleClass="info-grid">
                   <columnConstraints>
                      <ColumnConstraints halignment="RIGHT" minWidth="130"/>
                      <ColumnConstraints minWidth="200"/>
